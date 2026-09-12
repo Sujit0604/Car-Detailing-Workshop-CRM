@@ -4,15 +4,20 @@ const helmet = require("helmet");
 const cookieParser = require("cookie-parser");
 const compression = require("compression");
 const morgan = require("morgan");
+const mongoSanitize = require('express-mongo-sanitize');
+const hpp = require('hpp');
 
 const env = require("./config/env.js");
 // const authRouter = require("./routes/auth.routes.js");
 // const userRouter = require("./routes/user.routes.js");
-// const { apiLimiter } = require("./middlewares/rateLimiter.js");
-// const errorHandler = require("./middlewares/error.middleware.js");
+const { apiLimiter } = require("./middleware/rateLimiter.js");
+const errorHandler = require("./middleware/error.middleware.js");
 
 const app = express();
+
 app.use(helmet()); // security
+app.use(mongoSanitize());
+app.use(hpp());
 
 app.use(
     cors({
@@ -21,7 +26,7 @@ app.use(
     })
 );
 
-// app.use(apiLimiter);
+app.use(apiLimiter);
 app.use(express.json({ limit: '50kb' }));
 app.use(express.urlencoded({ extended: true }));
 
@@ -47,6 +52,6 @@ app.use((req, res) => {
     })
 })
 
-// app.use(errorHandler);
+app.use(errorHandler);
 
 module.exports = app;
