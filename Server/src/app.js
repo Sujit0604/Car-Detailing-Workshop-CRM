@@ -8,7 +8,7 @@ const mongoSanitize = require('express-mongo-sanitize');
 const hpp = require('hpp');
 
 const env = require("./config/env.js");
-// const authRouter = require("./routes/auth.routes.js");
+const authRouter = require("./routes/auth.routes.js");
 // const userRouter = require("./routes/user.routes.js");
 const { apiLimiter } = require("./middleware/rateLimiter.js");
 const errorHandler = require("./middleware/error.middleware.js");
@@ -16,14 +16,25 @@ const errorHandler = require("./middleware/error.middleware.js");
 const app = express();
 
 app.use(helmet()); // security
+
+app.use((req, res, next) => {
+  Object.defineProperty(req, 'query', {
+    value: { ...req.query },
+    writable: true,
+    configurable: true,
+    enumerable: true,
+  });
+  next();
+});   
 app.use(mongoSanitize());
 app.use(hpp());
 
 app.use(
-    cors({
-        origin: env.CLIENT_URL,
-        credentials: true,
-    })
+    // cors({
+    //     origin: env.CLIENT_URL,
+    //     credentials: true,
+    // })
+    cors()
 );
 
 app.use(apiLimiter);
@@ -41,8 +52,9 @@ app.get("/", (req, res) => {
     res.send("Authentication API running");
 });
 
-// For example :- /api/v1/auth/register
-// app.use("/api/v1/auth", authRouter);
+/* For example :- /api/v1/auth/register */
+
+app.use("/api/v1/auth", authRouter);
 // app.use("/api/v1/users", userRouter);
 
 app.use((req, res) => {
