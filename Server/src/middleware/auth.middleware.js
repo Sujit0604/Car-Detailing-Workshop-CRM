@@ -22,7 +22,7 @@ const authMiddleware = asyncHandler(async (req, res, next) => {
         throw new ApiError(401, "Access token is required")
     }
 
-    const decode = verifyAccessToken(token);
+    const decode = await verifyAccessToken(token);
 
     const user = await User.findById(decode.id);
 

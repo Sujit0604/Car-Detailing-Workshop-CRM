@@ -9,7 +9,9 @@ const hpp = require('hpp');
 
 const env = require("./config/env.js");
 const authRouter = require("./routes/auth.routes.js");
-// const userRouter = require("./routes/user.routes.js");
+const vehicleRouter = require("./routes/vehicle.routes.js");
+const bookingRouter = require("./routes/booking.routes.js");
+const jobRouter = require("./routes/job.routes.js");
 const { apiLimiter } = require("./middleware/rateLimiter.js");
 const errorHandler = require("./middleware/error.middleware.js");
 
@@ -55,7 +57,9 @@ app.get("/", (req, res) => {
 /* For example :- /api/v1/auth/register */
 
 app.use("/api/v1/auth", authRouter);
-// app.use("/api/v1/users", userRouter);
+app.use("/api/v1/vehicles", vehicleRouter);
+app.use("/api/v1/bookings", bookingRouter);
+app.use("/api/v1/jobs", jobRouter);
 
 app.use((req, res) => {
     res.status(404).json({

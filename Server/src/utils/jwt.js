@@ -5,7 +5,7 @@ const ApiError = require("../utils/ApiError.js");
 const generateAccessToken = (user) => {
   return jwt.sign(
     {
-      id: user._id,
+      id: user.id || user._id,
       email: user.email,
       role: user.role,
       type: "access",
@@ -23,7 +23,7 @@ const generateAccessToken = (user) => {
 const generateRefreshToken = (user) => {
   return jwt.sign(
     {
-      id: user._id,
+      id: user.id || user._id,
       type: "refresh",
     },
     env.REFRESH_TOKEN_SECRET,
@@ -40,7 +40,7 @@ const verifyAccessToken = async (token) => {
   try {
     return jwt.verify(token, env.ACCESS_TOKEN_SECRET, {
       issuer: env.JWT_ISSUER,
-      audience: JWT_AUDIENCE,
+      audience: env.JWT_AUDIENCE,
     });
   } catch (error) {
     throw new ApiError(401, " Invalid or Expired Access Token");
