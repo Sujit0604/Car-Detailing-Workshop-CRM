@@ -8,6 +8,7 @@ import Brand from '../../components/Brand'
 import AuthField from '../../components/AuthField'
 import { loginUser } from '../../services/authApi'
 import { useAuth } from '../../contexts/authContext.js'
+import { getHomePath } from '../../utils/routes'
 import { ACCENT, ACCENT_HOVER, FAINT, PANEL } from '../../config/theme'
 
 const loginSchema = z.object({
@@ -47,7 +48,7 @@ const Login = ({ onSwitchMode, initialEmail = '' }) => {
       if (res.data?.accessToken) {
         login(res.data.user, res.data.accessToken, res.data.refreshToken)
         toast.success('Logged in successfully')
-        navigate('/dashboard')
+        navigate(getHomePath(res.data.user.role))
       } else {
         toast.success(res.message || 'OTP sent to your email')
         onSwitchMode?.('otp', { email: data.email, password: data.password })

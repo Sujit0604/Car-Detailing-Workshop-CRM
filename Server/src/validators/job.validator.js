@@ -84,6 +84,38 @@ const listJobsQuerySchema = z.object({
   }),
 });
 
+const estimateItemSchema = z.object({
+  type: z.enum(["LABOUR", "PART", "SERVICE", "OTHER"]).default("OTHER"),
+  name: z.string({ required_error: "Item name is required" }).trim().min(1, "Item name is required"),
+  description: z.string().trim().optional(),
+  quantity: z.coerce.number().int().min(1).default(1),
+  unitPrice: z.coerce.number().min(0).default(0),
+});
+
+const createEstimateSchema = z.object({
+  params: z.object({
+    id: objectIdSchema,
+  }),
+  body: z.object({
+    items: z
+      .array(estimateItemSchema)
+      .min(1, "At least one estimate item is required"),
+    discount: z.coerce.number().min(0).default(0),
+    tax: z.coerce.number().min(0).default(0),
+    notes: z.string().trim().optional(),
+  }),
+});
+
+const estimateRespondSchema = z.object({
+  params: z.object({
+    id: objectIdSchema,
+  }),
+  body: z.object({
+    action: z.enum(["APPROVED", "REJECTED"]),
+    remarks: z.string().trim().optional(),
+  }),
+});
+
 module.exports = {
   createJobSchema,
   jobIdParamSchema,
@@ -92,4 +124,6 @@ module.exports = {
   assignMechanicSchema,
   checkInJobSchema,
   listJobsQuerySchema,
+  createEstimateSchema,
+  estimateRespondSchema,
 };

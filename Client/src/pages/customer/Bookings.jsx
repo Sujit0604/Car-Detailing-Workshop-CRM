@@ -1,13 +1,14 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
-import { CalendarClock, XCircle, ChevronDown, ChevronUp, CalendarPlus } from 'lucide-react'
+import { CalendarClock, XCircle, ChevronDown, ChevronUp, CalendarPlus, ClipboardList, ArrowRight } from 'lucide-react'
 import AppNav from '../../components/AppNav'
 import StatusBadge from '../../components/StatusBadge'
 import EmptyState from '../../components/EmptyState'
 import Spinner from '../../components/Spinner'
 import Modal from '../../components/Modal'
 import { listMyBookings, cancelBooking } from '../../services/bookingApi'
+import { listJobs } from '../../services/jobApi'
 import {
   ACCENT,
   ACCENT_HOVER,
@@ -46,6 +47,7 @@ function DetailRow({ label, value }) {
 export default function BookingsPage() {
   const navigate = useNavigate()
   const [bookings, setBookings] = useState([])
+  const [jobsByBooking, setJobsByBooking] = useState({})
   const [loading, setLoading] = useState(true)
   const [expanded, setExpanded] = useState(null)
   const [cancelling, setCancelling] = useState(null)
@@ -63,8 +65,19 @@ export default function BookingsPage() {
 
   useEffect(() => {
     let cancelled = false
-    listMyBookings({ limit: 50 })
-      .then((res) => { if (!cancelled) setBookings(res.data?.bookings || []) })
+    Promise.all([listMyBookings({ limit: 50 }), listJobs({ limit: 100 })])
+      .then(([bookingRes, jobRes]) => {
+        if (cancelled) return
+        setBookings(bookingRes.data?.bookings || [])
+        const map = {}
+        for (const job of jobRes.data?.jobs || []) {
+          if (job.bookingId?._id || job.bookingId) {
+            const bid = job.bookingId?._id || job.bookingId
+            map[bid] = job._id
+          }
+        }
+        setJobsByBooking(map)
+      })
       .catch((err) => { if (!cancelled) toast.error(err.message) })
       .finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
@@ -243,6 +256,20 @@ export default function BookingsPage() {
                             )}
                           </div>
                           <div className="flex items-center gap-3">
+                            {jobsByBooking[booking._id] && (
+                              <button
+                                type="button"
+                                onClick={() => navigate(`/jobs/${jobsByBooking[booking._id]}`)}
+                                className="inline-flex items-center gap-1.5 px-4 py-2 text-[11px] font-black uppercase tracking-widest transition-all duration-200 cursor-pointer"
+                                style={primaryButtonStyle}
+                                onMouseEnter={(e) => (e.currentTarget.style.background = ACCENT_HOVER)}
+                                onMouseLeave={(e) => (e.currentTarget.style.background = ACCENT)}
+                              >
+                                <ClipboardList size={13} />
+                                Service Card
+                                <ArrowRight size={13} />
+                              </button>
+                            )}
                             {booking.cancellation && (
                               <p className="text-xs" style={{ color: MUTED }}>
                                 Cancelled: {booking.cancellation.reason}

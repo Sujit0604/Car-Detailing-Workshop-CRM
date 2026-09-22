@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
-import { Car, Plus, Pencil, Trash2, Gauge, Wrench } from 'lucide-react'
+import { Car, Plus, Pencil, Trash2, Gauge, Wrench, Camera, X, Check } from 'lucide-react'
 import AppNav from '../../components/AppNav'
 import StatusBadge from '../../components/StatusBadge'
 import EmptyState from '../../components/EmptyState'
@@ -17,6 +17,10 @@ import {
   updateVehicle,
   deleteVehicle,
 } from '../../services/vehicleApi'
+import {
+  uploadVehicleImage,
+  deleteVehicleImage,
+} from '../../services/mediaApi'
 import {
   ACCENT,
   ACCENT_HOVER,
@@ -54,6 +58,8 @@ export default function VehiclesPage() {
   const [editing, setEditing] = useState(null)
   const [form, setForm] = useState(EMPTY_FORM)
   const [errors, setErrors] = useState({})
+  const [newImages, setNewImages] = useState([])
+  const [removedPublicIds, setRemovedPublicIds] = useState([])
 
   const validate = (data) => {
     const errs = {}
@@ -102,6 +108,8 @@ export default function VehiclesPage() {
     setEditing(null)
     setForm(EMPTY_FORM)
     setErrors({})
+    setNewImages([])
+    setRemovedPublicIds([])
     setModalOpen(true)
   }
 
@@ -119,6 +127,8 @@ export default function VehiclesPage() {
       vin: vehicle.vin || '',
       odometer: vehicle.odometer ?? '',
     })
+    setNewImages([])
+    setRemovedPublicIds([])
     setModalOpen(true)
   }
 
@@ -141,13 +151,25 @@ export default function VehiclesPage() {
       if (payload.odometer) payload.odometer = Number(payload.odometer)
       if (!payload.variant) delete payload.variant
 
+      let savedVehicle
       if (editing) {
-        await updateVehicle(editing._id, payload)
+        const res = await updateVehicle(editing._id, payload)
+        savedVehicle = res.data
         toast.success('Vehicle updated successfully')
       } else {
-        await createVehicle(payload)
+        const res = await createVehicle(payload)
+        savedVehicle = res.data
         toast.success('Vehicle added successfully')
       }
+
+      if (removedPublicIds.length > 0) {
+        await Promise.all(removedPublicIds.map((pid) => deleteVehicleImage(savedVehicle._id, pid)))
+      }
+
+      for (const file of newImages) {
+        await uploadVehicleImage(savedVehicle._id, file)
+      }
+
       setModalOpen(false)
       loadVehicles()
     } catch (err) {
@@ -165,6 +187,25 @@ export default function VehiclesPage() {
     } catch (err) {
       toast.error(err.message)
     }
+  }
+
+  const addPhotos = (e) => {
+    const files = Array.from(e.target.files || [])
+    const images = files.filter((f) => f.type.startsWith('image/'))
+    setNewImages((prev) => [...prev, ...images].slice(0, 10))
+    e.target.value = ''
+  }
+
+  const removeNewPhoto = (index) => {
+    setNewImages((prev) => prev.filter((_, i) => i !== index))
+  }
+
+  const queueRemoveExisting = (publicId) => {
+    setRemovedPublicIds((prev) => [...prev, publicId])
+  }
+
+  const undoRemoveExisting = (publicId) => {
+    setRemovedPublicIds((prev) => prev.filter((pid) => pid !== publicId))
   }
 
   return (
@@ -255,6 +296,23 @@ export default function VehiclesPage() {
                   </div>
                   <StatusBadge status={vehicle.status} />
                 </div>
+
+                {(vehicle.images || []).length > 0 && (
+                  <div
+                    className="flex gap-2 overflow-x-auto pb-3 mb-1"
+                    style={{ scrollbarWidth: 'thin' }}
+                  >
+                    {(vehicle.images || []).slice(0, 4).map((img) => (
+                      <img
+                        key={img.publicId || img.url}
+                        src={img.url}
+                        alt="Vehicle"
+                        className="w-20 h-16 object-cover shrink-0"
+                        style={{ border: `1px solid ${LINE_STRONG}` }}
+                      />
+                    ))}
+                  </div>
+                )}
 
                 <div className="space-y-2 text-xs" style={{ color: MUTED }}>
                   <div className="flex items-center justify-between">
@@ -435,6 +493,92 @@ export default function VehiclesPage() {
               />
               {errors.odometer && (
                 <p className="mt-1.5 text-xs font-semibold" style={{ color: ACCENT }}>{errors.odometer}</p>
+              )}
+            </div>
+          </div>
+
+          <div
+            className="p-4"
+            style={{ border: `1px solid ${LINE_STRONG}`, background: '#0e0e0e' }}
+          >
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <Camera size={15} style={{ color: ACCENT }} />
+                <span
+                  className="text-xs font-black uppercase tracking-widest"
+                  style={{ fontFamily: "'Barlow Condensed', sans-serif", letterSpacing: '0.1em' }}
+                >
+                  Vehicle Photos
+                </span>
+              </div>
+              <label
+                className="inline-flex items-center gap-1.5 px-3 py-2 text-[11px] font-black uppercase tracking-widest transition-all duration-200 cursor-pointer"
+                style={ghostButtonStyle}
+              >
+                <Plus size={12} />
+                Add Photo
+                <input type="file" accept="image/*" multiple className="hidden" onChange={addPhotos} />
+              </label>
+            </div>
+
+            <div className="flex flex-wrap gap-3">
+              {(editing?.images || []).map((img) => {
+                const queuedForRemoval = removedPublicIds.includes(img.publicId)
+                return (
+                  <div key={img.publicId || img.url} className="relative">
+                    <img
+                      src={img.url}
+                      alt="Vehicle"
+                      className="w-24 h-20 object-cover"
+                      style={{
+                        border: `1px solid ${queuedForRemoval ? ACCENT : LINE_STRONG}`,
+                        opacity: queuedForRemoval ? 0.35 : 1,
+                      }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() =>
+                        queuedForRemoval
+                          ? undoRemoveExisting(img.publicId)
+                          : queueRemoveExisting(img.publicId)
+                      }
+                      className="absolute -top-2 -right-2 w-6 h-6 flex items-center justify-center cursor-pointer"
+                      style={{
+                        background: queuedForRemoval ? '#10b981' : ACCENT,
+                        color: '#fff',
+                        border: `2px solid ${PANEL}`,
+                      }}
+                      title={queuedForRemoval ? 'Restore photo' : 'Remove photo'}
+                    >
+                      {queuedForRemoval ? <Check size={12} /> : <X size={12} />}
+                    </button>
+                  </div>
+                )
+              })}
+
+              {newImages.map((file, index) => (
+                <div key={`${file.name}-${index}`} className="relative">
+                  <img
+                    src={URL.createObjectURL(file)}
+                    alt={file.name}
+                    className="w-24 h-20 object-cover"
+                    style={{ border: `1px solid ${ACCENT}` }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => removeNewPhoto(index)}
+                    className="absolute -top-2 -right-2 w-6 h-6 flex items-center justify-center cursor-pointer"
+                    style={{ background: ACCENT, color: '#fff', border: `2px solid ${PANEL}` }}
+                  >
+                    <X size={12} />
+                  </button>
+                </div>
+              ))}
+
+              {newImages.length === 0 && (editing?.images || []).length === 0 && (
+                <p className="text-xs w-full" style={{ color: MUTED }}>
+                  No photos yet — add photos of your car so the workshop knows what to expect.
+                </p>
               )}
             </div>
           </div>

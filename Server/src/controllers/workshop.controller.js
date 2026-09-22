@@ -6,6 +6,7 @@ const {
   listWorkshopsService,
   updateWorkshopService,
   deleteWorkshopService,
+  getWorkshopOverviewService,
 } = require("../services/workshop.service.js");
 
 const createWorkshop = asyncHandler(async (req, res) => {
@@ -38,10 +39,17 @@ const deleteWorkshop = asyncHandler(async (req, res) => {
   return sendResponse(res, 200, "Workshop deleted successfully", result);
 });
 
+const getWorkshopOverview = asyncHandler(async (req, res) => {
+  const result = await getWorkshopOverviewService(req.params.id);
+
+  return sendResponse(res, 200, "Workshop overview fetched successfully", result);
+});
+
 module.exports = {
   createWorkshop,
   getWorkshopById,
   listWorkshops,
   updateWorkshop,
   deleteWorkshop,
+  getWorkshopOverview,
 };

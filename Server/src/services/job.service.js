@@ -14,7 +14,7 @@ const JOB_STATUS_TRANSITIONS = {
   CHECK_IN: ["INSPECTION", "CANCELLED"],
   INSPECTION: ["ESTIMATE_PENDING", "REWORK", "CANCELLED"],
   ESTIMATE_PENDING: ["CUSTOMER_APPROVAL", "APPROVED", "CANCELLED"],
-  CUSTOMER_APPROVAL: ["APPROVED", "REJECTED", "CANCELLED"],
+  CUSTOMER_APPROVAL: ["APPROVED", "ESTIMATE_PENDING", "CANCELLED"],
   APPROVED: ["ASSIGNED", "CANCELLED"],
   ASSIGNED: ["IN_PROGRESS", "REWORK"],
   IN_PROGRESS: ["QUALITY_CHECK", "REWORK", "CANCELLED"],
@@ -26,14 +26,63 @@ const JOB_STATUS_TRANSITIONS = {
   CANCELLED: [],
 };
 
+// Who is allowed to move a job INTO each target status.
+// Workshop Manager supervises both the mechanics' work (quality control)
+// and the service advisor's workflow, so they can drive every stage.
+const ROLE_STATUS_PERMISSIONS = {
+  CHECK_IN: ["SERVICE_ADVISOR", "WORKSHOP_MANAGER", "ADMIN"],
+  INSPECTION: ["SERVICE_ADVISOR", "WORKSHOP_MANAGER", "ADMIN"],
+  ESTIMATE_PENDING: ["SERVICE_ADVISOR", "WORKSHOP_MANAGER", "ADMIN"],
+  CUSTOMER_APPROVAL: ["SERVICE_ADVISOR", "WORKSHOP_MANAGER", "ADMIN"],
+  APPROVED: ["SERVICE_ADVISOR", "WORKSHOP_MANAGER", "ADMIN"],
+  ASSIGNED: ["SERVICE_ADVISOR", "WORKSHOP_MANAGER", "ADMIN"],
+  IN_PROGRESS: ["MECHANIC", "WORKSHOP_MANAGER", "ADMIN"],
+  QUALITY_CHECK: ["MECHANIC", "WORKSHOP_MANAGER", "ADMIN"],
+  REWORK: ["MECHANIC", "SERVICE_ADVISOR", "WORKSHOP_MANAGER", "ADMIN"],
+  READY: ["WORKSHOP_MANAGER", "ADMIN"],
+  DELIVERED: ["SERVICE_ADVISOR", "WORKSHOP_MANAGER", "ADMIN"],
+  COMPLETED: ["SERVICE_ADVISOR", "WORKSHOP_MANAGER", "ADMIN"],
+  CANCELLED: ["SERVICE_ADVISOR", "WORKSHOP_MANAGER", "ADMIN"],
+};
+
+const getMechanicForUser = async (userId) => {
+  return Mechanic.findOne({ userId, status: { $ne: "INACTIVE" } });
+};
+
 const validateJobStatusTransition = (currentStatus, nextStatus) => {
   const allowed = JOB_STATUS_TRANSITIONS[currentStatus];
 
-  if (!allowed.includes(nextStatus)) {
+  if (!allowed || !allowed.includes(nextStatus)) {
     throw new ApiError(
       400,
       `Invalid job status transition from ${currentStatus} to ${nextStatus}`,
     );
+  }
+};
+
+const authorizeJobStatusChange = (user, nextStatus) => {
+  const roles = ROLE_STATUS_PERMISSIONS[nextStatus];
+
+  if (!roles) {
+    throw new ApiError(400, `Status ${nextStatus} cannot be set through this endpoint`);
+  }
+
+  if (!roles.includes(user.role)) {
+    throw new ApiError(403, "Your role is not allowed to perform this action");
+  }
+};
+
+const assertMechanicCanUpdate = async (job, user) => {
+  if (user.role !== "MECHANIC") return;
+
+  const mechanic = await getMechanicForUser(user._id);
+
+  if (!mechanic) {
+    throw new ApiError(403, "No mechanic profile found for your account");
+  }
+
+  if (!job.assignedMechanicId || job.assignedMechanicId.toString() !== mechanic._id.toString()) {
+    throw new ApiError(403, "This job is not assigned to you");
   }
 };
 
@@ -79,9 +128,9 @@ const getJobByIdService = async (jobId, user) => {
   const job = await Job.findById(jobId)
     .populate("bookingId", "bookingNumber appointment pricing")
     .populate("customerId", "name email phone")
-    .populate("vehicleId", "registrationNumber make model color")
+    .populate("vehicleId", "registrationNumber make model color images")
     .populate("workshopId", "name code")
-    .populate("assignedMechanicId")
+    .populate("assignedMechanicId", "employeeCode specialization experienceYears userId")
     .populate("serviceAdvisorId", "name email");
 
   if (!job) {
@@ -90,6 +139,14 @@ const getJobByIdService = async (jobId, user) => {
 
   if (user.role === "CUSTOMER" && job.customerId._id.toString() !== user._id.toString()) {
     throw new ApiError(403, "You don't have permission to access this job");
+  }
+
+  if (user.role === "MECHANIC") {
+    const mechanic = await getMechanicForUser(user._id);
+
+    if (!mechanic || job.workshopId._id.toString() !== mechanic.workshopId.toString()) {
+      throw new ApiError(403, "This job does not belong to your workshop");
+    }
   }
 
   return job;
@@ -113,7 +170,22 @@ const listJobsService = async (user, query, workshopId) => {
     filter.customerId = user._id;
   }
 
-  if (workshopId) filter.workshopId = workshopId;
+  if (user.role === "MECHANIC") {
+    const mechanic = await getMechanicForUser(user._id);
+
+    if (!mechanic) {
+      return { jobs: [], pagination: { page, limit, total: 0, totalPages: 0 } };
+    }
+
+    filter.assignedMechanicId = mechanic._id;
+    filter.workshopId = workshopId || mechanic.workshopId;
+
+    if (workshopId && workshopId !== mechanic.workshopId.toString()) {
+      return { jobs: [], pagination: { page, limit, total: 0, totalPages: 0 } };
+    }
+  }
+
+  if (workshopId && user.role !== "MECHANIC") filter.workshopId = workshopId;
   if (status) filter.status = status;
   if (mechanicId) filter.assignedMechanicId = mechanicId;
 
@@ -130,6 +202,7 @@ const listJobsService = async (user, query, workshopId) => {
     Job.find(filter)
       .populate("bookingId", "bookingNumber")
       .populate("vehicleId", "registrationNumber make model")
+      .populate("assignedMechanicId", "employeeCode userId")
       .sort(sort)
       .skip((page - 1) * limit)
       .limit(limit),
@@ -156,6 +229,10 @@ const updateJobStatusService = async (jobId, status, notes, user) => {
 
   validateJobStatusTransition(job.status, status);
 
+  authorizeJobStatusChange(user, status);
+
+  await assertMechanicCanUpdate(job, user);
+
   const now = new Date();
 
   switch (status) {
@@ -178,12 +255,16 @@ const updateJobStatusService = async (jobId, status, notes, user) => {
 
   await job.save();
 
-  logger.info(`Job ${job.jobNumber} status -> ${status}`);
+  logger.info(`Job ${job.jobNumber} status -> ${status} (by ${user.role})`);
 
   return job;
 };
 
 const checkInJobService = async (jobId, { odometerIn, customerNotes, internalNotes }, user) => {
+  if (!["SERVICE_ADVISOR", "WORKSHOP_MANAGER", "ADMIN"].includes(user.role)) {
+    throw new ApiError(403, "Only a service advisor or workshop manager can check in a vehicle");
+  }
+
   const job = await Job.findById(jobId);
 
   if (!job) {
@@ -235,6 +316,9 @@ const assignMechanicService = async (jobId, mechanicId) => {
 };
 
 module.exports = {
+  JOB_STATUS_TRANSITIONS,
+  ROLE_STATUS_PERMISSIONS,
+  getMechanicForUser,
   createJobFromBookingService,
   getJobByIdService,
   listJobsService,

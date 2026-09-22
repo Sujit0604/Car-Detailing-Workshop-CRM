@@ -3,6 +3,10 @@ const ApiError = require("../utils/ApiError.js");
 const errorhandler = (err, req, res, next) => {
     let error = err;
 
+    if (err && err.name === "MulterError") {
+        error = new ApiError(400, err.message || "File upload failed");
+    }
+
     if (!(error instanceof ApiError)) {
         error = new ApiError(500, error.message || "Internal Server Error.")
     }

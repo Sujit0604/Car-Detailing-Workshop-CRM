@@ -2,6 +2,7 @@ const express = require("express");
 const authMiddleware = require("../middleware/auth.middleware.js");
 const authorize = require("../middleware/role.middleware.js");
 const validate = require("../middleware/validation.middleware.js");
+const upload = require("../middleware/upload.middleware.js");
 const logger = require("../utils/logger.js");
 const {
   createVehicle,
@@ -9,6 +10,8 @@ const {
   listVehicles,
   updateVehicle,
   deleteVehicle,
+  addVehicleImage,
+  removeVehicleImage,
 } = require("../controllers/vehicle.controller.js");
 const {
   createVehicleSchema,
@@ -64,6 +67,23 @@ vehicleRouter.delete(
   validate(vehicleIdParamSchema),
   logRoute("Delete"),
   deleteVehicle
+);
+
+vehicleRouter.post(
+  "/:id/images",
+  authorize("CUSTOMER", "ADMIN"),
+  validate(vehicleIdParamSchema),
+  upload.single("image"),
+  logRoute("AddImage"),
+  addVehicleImage
+);
+
+vehicleRouter.delete(
+  "/:id/images",
+  authorize("CUSTOMER", "ADMIN"),
+  validate(vehicleIdParamSchema),
+  logRoute("RemoveImage"),
+  removeVehicleImage
 );
 
 module.exports = vehicleRouter;

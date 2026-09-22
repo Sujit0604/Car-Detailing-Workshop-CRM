@@ -13,6 +13,11 @@ const {
   assignMechanic,
 } = require("../controllers/job.controller.js");
 const {
+  createEstimate,
+  getLatestEstimate,
+  respondToEstimate,
+} = require("../controllers/estimate.controller.js");
+const {
   createJobSchema,
   jobIdParamSchema,
   workshopIdParamSchema,
@@ -20,6 +25,8 @@ const {
   assignMechanicSchema,
   checkInJobSchema,
   listJobsQuerySchema,
+  createEstimateSchema,
+  estimateRespondSchema,
 } = require("../validators/job.validator.js");
 
 const jobRouter = express.Router();
@@ -86,6 +93,30 @@ jobRouter.patch(
   validate(assignMechanicSchema),
   logRoute("AssignMechanic"),
   assignMechanic
+);
+
+jobRouter.post(
+  "/:id/estimate",
+  authorize("ADMIN", "WORKSHOP_MANAGER", "SERVICE_ADVISOR"),
+  validate(createEstimateSchema),
+  logRoute("CreateEstimate"),
+  createEstimate
+);
+
+jobRouter.get(
+  "/:id/estimate",
+  authorize("ADMIN", "WORKSHOP_MANAGER", "SERVICE_ADVISOR", "MECHANIC", "CUSTOMER"),
+  validate(jobIdParamSchema),
+  logRoute("GetEstimate"),
+  getLatestEstimate
+);
+
+jobRouter.post(
+  "/:id/estimate/respond",
+  authorize("CUSTOMER", "ADMIN"),
+  validate(estimateRespondSchema),
+  logRoute("RespondEstimate"),
+  respondToEstimate
 );
 
 module.exports = jobRouter;

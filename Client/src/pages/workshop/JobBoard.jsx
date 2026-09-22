@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
-import { ClipboardList, Plus, Wrench } from 'lucide-react'
+import { ClipboardList, Plus, Wrench, Boxes, Users, CalendarClock, TrendingUp } from 'lucide-react'
 import AppNav from '../../components/AppNav'
 import StatusBadge from '../../components/StatusBadge'
 import EmptyState from '../../components/EmptyState'
@@ -11,8 +11,9 @@ import {
   SelectInput,
   TextInput,
 } from '../../components/Field'
-import { listWorkshopJobs, createJob } from '../../services/jobApi'
-import { listWorkshops } from '../../services/masterApi'
+import { useAuth } from '../../contexts/authContext'
+import { listJobs, listWorkshopJobs, createJob } from '../../services/jobApi'
+import { listWorkshops, getWorkshopOverview } from '../../services/masterApi'
 import { formatDate, formatDateTime } from '../../utils/transitions'
 import {
   ACCENT,
@@ -45,11 +46,35 @@ const JOB_FILTERS = [
   'CANCELLED',
 ]
 
+function StatCard({ icon: Icon, label, value, accent }) {
+  return (
+    <div className="flex items-center gap-3 p-4" style={{ border: `1px solid ${LINE_STRONG}`, background: PANEL }}>
+      <div className="flex items-center justify-center w-10 h-10 shrink-0" style={{ background: accent ? `${accent}1f` : 'rgba(217,79,61,0.10)' }}>
+        <Icon size={18} style={{ color: accent || ACCENT }} />
+      </div>
+      <div>
+        <p className="text-2xl font-black leading-none" style={{ fontFamily: "'Barlow Condensed', sans-serif" }}>
+          {value}
+        </p>
+        <p className="text-[11px] uppercase tracking-widest mt-1" style={{ color: MUTED, fontFamily: "'Barlow Condensed', sans-serif" }}>
+          {label}
+        </p>
+      </div>
+    </div>
+  )
+}
+
 export default function JobBoardPage() {
   const navigate = useNavigate()
+  const { user } = useAuth()
+  const role = user?.role
+  const isMechanic = role === 'MECHANIC'
+  const isManager = role === 'WORKSHOP_MANAGER' || role === 'ADMIN'
+
   const [workshops, setWorkshops] = useState([])
   const [workshopId, setWorkshopId] = useState('')
   const [jobs, setJobs] = useState([])
+  const [overview, setOverview] = useState(null)
   const [filter, setFilter] = useState('ALL')
   const [loading, setLoading] = useState(true)
   const [jobModal, setJobModal] = useState(false)
@@ -72,19 +97,32 @@ export default function JobBoardPage() {
   useEffect(() => {
     if (!workshopId) return
     let cancelled = false
-    listWorkshopJobs(workshopId, { limit: 100 })
+    const fetchJobs = isMechanic
+      ? listJobs({ limit: 100 })
+      : listWorkshopJobs(workshopId, { limit: 100 })
+    fetchJobs
       .then((res) => { if (!cancelled) setJobs(res.data?.jobs || []) })
       .catch((err) => { if (!cancelled) toast.error(err.message) })
       .finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
-  }, [workshopId])
+  }, [workshopId, isMechanic])
+
+  useEffect(() => {
+    if (!workshopId || !isManager) return
+    let cancelled = false
+    getWorkshopOverview(workshopId)
+      .then((res) => { if (!cancelled) setOverview(res.data) })
+      .catch(() => { if (!cancelled) setOverview(null) })
+    return () => { cancelled = true }
+  }, [workshopId, isManager])
 
   const visibleJobs = filter === 'ALL' ? jobs : jobs.filter((j) => j.status === filter)
 
   const reloadJobs = async () => {
-    if (!workshopId) return
     try {
-      const res = await listWorkshopJobs(workshopId, { limit: 100 })
+      const res = isMechanic
+        ? await listJobs({ limit: 100 })
+        : await listWorkshopJobs(workshopId, { limit: 100 })
       setJobs(res.data?.jobs || [])
     } catch (err) {
       toast.error(err.message)
@@ -120,14 +158,18 @@ export default function JobBoardPage() {
                 className="text-3xl font-black uppercase tracking-widest"
                 style={{ fontFamily: "'Barlow Condensed', sans-serif" }}
               >
-                Job Board
+                {isMechanic ? 'My Jobs' : 'Job Board'}
               </h1>
             </div>
             <p className="text-sm" style={{ color: MUTED }}>
-              Track every job in the workshop service pipeline
+              {isMechanic
+                ? 'Jobs assigned to you — repair the car and keep the status updated'
+                : isManager
+                  ? 'Manage every job in the workshop service pipeline and inspect the work'
+                  : 'Track every job in the workshop service pipeline'}
             </p>
           </div>
-          <div className="flex items-center gap-3">
+          {!isMechanic && (
             <button
               type="button"
               onClick={() => setJobModal(true)}
@@ -139,25 +181,38 @@ export default function JobBoardPage() {
               <Plus size={16} />
               Create Job
             </button>
-          </div>
+          )}
         </div>
 
-        <div className="max-w-sm">
-          <SelectInput
-            label="Workshop"
-            required
-            placeholder="Select a workshop"
-            value={workshopId}
-            onChange={(e) => { setLoading(true); setWorkshopId(e.target.value) }}
-          >
-            {workshops.map((w) => (
-              <option key={w._id} value={w._id} style={{ background: PANEL }}>
-                {w.name}
-                {w.address?.city ? ` · ${w.address.city}` : ''}
-              </option>
-            ))}
-          </SelectInput>
-        </div>
+        {isManager && overview && (
+          <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-6 gap-4">
+            <StatCard icon={Wrench} label="Active Jobs" value={overview.totalActiveJobs || 0} />
+            <StatCard icon={TrendingUp} label="In Progress" value={overview.jobsByStatus?.IN_PROGRESS || 0} accent="#38bdf8" />
+            <StatCard icon={ClipboardList} label="Awaiting QC" value={overview.jobsByStatus?.QUALITY_CHECK || 0} accent="#a78bfa" />
+            <StatCard icon={CalendarClock} label="Bookings Today" value={overview.bookingsToday || 0} accent="#10b981" />
+            <StatCard icon={Users} label="Mechanics" value={overview.activeMechanics || 0} accent="#fbbf24" />
+            <StatCard icon={Boxes} label="Low Stock" value={overview.lowStockCount || 0} accent={overview.lowStockCount ? ACCENT : '#10b981'} />
+          </div>
+        )}
+
+        {!isMechanic && workshopId === '' && (
+          <div className="max-w-sm">
+            <SelectInput
+              label="Workshop"
+              required
+              placeholder="Select a workshop"
+              value={workshopId}
+              onChange={(e) => { setLoading(true); setWorkshopId(e.target.value) }}
+            >
+              {workshops.map((w) => (
+                <option key={w._id} value={w._id} style={{ background: PANEL }}>
+                  {w.name}
+                  {w.address?.city ? ` · ${w.address.city}` : ''}
+                </option>
+              ))}
+            </SelectInput>
+          </div>
+        )}
 
         <div className="flex items-center gap-2 overflow-x-auto pb-2">
           {JOB_FILTERS.map((f) => (
@@ -182,8 +237,10 @@ export default function JobBoardPage() {
         {!workshopId ? (
           <EmptyState
             icon={Wrench}
-            title="Select a workshop"
-            message="Choose a workshop from the dropdown to load its jobs."
+            title={isMechanic ? 'No assigned jobs' : 'Select a workshop'}
+            message={isMechanic
+              ? 'Jobs assigned to you will appear here once a service advisor or manager allocates them.'
+              : 'Choose a workshop from the dropdown to load its jobs.'}
           />
         ) : loading ? (
           <Spinner />
@@ -191,20 +248,18 @@ export default function JobBoardPage() {
           <EmptyState
             icon={ClipboardList}
             title="No jobs found"
-            message="Create a job from a booking to start the workflow."
-            action={
+            message={isMechanic ? 'You have no jobs in this status yet.' : 'Create a job from a booking to start the workflow.'}
+            action={!isMechanic ? (
               <button
                 type="button"
                 onClick={() => setJobModal(true)}
                 className="inline-flex items-center gap-1.5 px-6 py-3 text-xs font-black uppercase tracking-widest transition-all duration-200 cursor-pointer"
                 style={primaryButtonStyle}
-                onMouseEnter={(e) => (e.currentTarget.style.background = ACCENT_HOVER)}
-                onMouseLeave={(e) => (e.currentTarget.style.background = ACCENT)}
               >
                 <Plus size={14} />
                 Create Job
               </button>
-            }
+            ) : undefined}
           />
         ) : (
           <div className="overflow-x-auto" style={{ border: `1px solid ${LINE_STRONG}`, background: PANEL }}>
@@ -251,7 +306,9 @@ export default function JobBoardPage() {
                     </td>
                     <td className="px-5 py-3.5 text-sm" style={{ color: MUTED }}>
                       {job.assignedMechanicId
-                        ? `${job.assignedMechanicId.userId?.name || 'Mechanic'}`
+                        ? job.assignedMechanicId.userId
+                          ? job.assignedMechanicId.userId?.name
+                          : (job.assignedMechanicId.employeeCode || 'Mechanic')
                         : 'Unassigned'}
                     </td>
                     <td className="px-5 py-3.5 text-sm whitespace-nowrap" style={{ color: MUTED }}>
@@ -287,8 +344,6 @@ export default function JobBoardPage() {
               onClick={() => setJobModal(false)}
               className="px-5 py-3 text-xs font-black uppercase tracking-widest transition-colors duration-200 cursor-pointer"
               style={ghostButtonStyle}
-              onMouseEnter={(e) => { e.currentTarget.style.borderColor = ACCENT; e.currentTarget.style.color = ACCENT }}
-              onMouseLeave={(e) => { e.currentTarget.style.borderColor = LINE_STRONG; e.currentTarget.style.color = '#8a8580' }}
             >
               Cancel
             </button>
@@ -297,8 +352,6 @@ export default function JobBoardPage() {
               disabled={creating || !bookingId}
               className="px-6 py-3 text-xs font-black uppercase tracking-widest transition-all duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
               style={primaryButtonStyle}
-              onMouseEnter={(e) => { if (!e.currentTarget.disabled) e.currentTarget.style.background = ACCENT_HOVER }}
-              onMouseLeave={(e) => { e.currentTarget.style.background = ACCENT }}
             >
               {creating ? 'Creating...' : 'Create Job'}
             </button>

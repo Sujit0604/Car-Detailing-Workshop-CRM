@@ -16,6 +16,9 @@ const workshopRouter = require("./routes/workshop.routes.js");
 const serviceRouter = require("./routes/service.routes.js");
 const serviceCategoryRouter = require("./routes/serviceCategory.routes.js");
 const adminRouter = require("./routes/admin.routes.js");
+const { mediaRouter } = require("./routes/media.routes.js");
+const inventoryRouter = require("./routes/inventory.routes.js");
+const mechanicRouter = require("./routes/mechanic.routes.js");
 const { apiLimiter } = require("./middleware/rateLimiter.js");
 const errorHandler = require("./middleware/error.middleware.js");
 
@@ -68,6 +71,9 @@ app.use("/api/v1/workshops", workshopRouter);
 app.use("/api/v1/services", serviceRouter);
 app.use("/api/v1/service-categories", serviceCategoryRouter);
 app.use("/api/v1/admin", adminRouter);
+app.use("/api/v1/media", mediaRouter);
+app.use("/api/v1/inventory", inventoryRouter);
+app.use("/api/v1/mechanics", mechanicRouter);
 
 app.use((req, res) => {
     res.status(404).json({

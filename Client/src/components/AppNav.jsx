@@ -6,9 +6,11 @@ import {
   CalendarClock,
   Wrench,
   ClipboardList,
+  Package,
   LogOut,
 } from 'lucide-react'
 import { useAuth } from '../contexts/authContext.js'
+import { getHomePath } from '../utils/routes'
 import {
   ACCENT,
   ACCENT_HOVER,
@@ -25,17 +27,34 @@ const CUSTOMER_LINKS = [
   { to: '/bookings', label: 'My Bookings', icon: CalendarClock },
 ]
 
-const STAFF_LINKS = [
-  { to: '/workshop/jobs', label: 'Job Board', icon: ClipboardList },
-  { to: '/workshop/bookings', label: 'Bookings', icon: Wrench },
-]
+const ROLE_LINKS = {
+  CUSTOMER: [...CUSTOMER_LINKS],
+  SERVICE_ADVISOR: [
+    { to: '/workshop/jobs', label: 'Job Board', icon: ClipboardList },
+    { to: '/workshop/bookings', label: 'Bookings', icon: Wrench },
+  ],
+  WORKSHOP_MANAGER: [
+    { to: '/workshop/jobs', label: 'Job Board', icon: ClipboardList },
+    { to: '/workshop/bookings', label: 'Bookings', icon: Wrench },
+    { to: '/workshop/inventory', label: 'Inventory', icon: Package },
+  ],
+  MECHANIC: [
+    { to: '/workshop/jobs', label: 'My Jobs', icon: ClipboardList },
+  ],
+  ADMIN: [
+    { to: '/workshop/jobs', label: 'Job Board', icon: ClipboardList },
+    { to: '/workshop/bookings', label: 'Bookings', icon: Wrench },
+    { to: '/workshop/inventory', label: 'Inventory', icon: Package },
+  ],
+}
 
 export default function AppNav() {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
-  const isStaff = user?.role && user.role !== 'CUSTOMER'
+  const role = user?.role
 
-  const links = isStaff ? [...CUSTOMER_LINKS, ...STAFF_LINKS] : CUSTOMER_LINKS
+  const links = ROLE_LINKS[role] || CUSTOMER_LINKS
+  const homePath = getHomePath(role)
 
   return (
     <header
@@ -44,7 +63,7 @@ export default function AppNav() {
     >
       <div className="max-w-7xl mx-auto flex items-center justify-between gap-4 py-4">
         <NavLink
-          to="/dashboard"
+          to={homePath}
           className="flex items-center gap-2.5"
           style={{ color: FOREGROUND, textDecoration: 'none' }}
         >

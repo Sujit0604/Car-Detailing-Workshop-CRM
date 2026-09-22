@@ -1,5 +1,10 @@
 const ApiError = require("../utils/ApiError.js");
 const Workshop = require("../models/Workshop.js");
+const Job = require("../models/Job.js");
+const Booking = require("../models/Booking.js");
+const InventoryPart = require("../models/InventoryPart.js");
+const Mechanic = require("../models/Mechanic.js");
+const User = require("../models/User.js");
 const logger = require("../utils/logger.js");
 
 const createWorkshopService = async (workshopData) => {
@@ -106,10 +111,62 @@ const deleteWorkshopService = async (workshopId) => {
   return { _id: workshop._id, status: workshop.status };
 };
 
+const getWorkshopOverviewService = async (workshopId) => {
+  const workshop = await getWorkshopByIdService(workshopId);
+
+  const [jobCounts, bookingCounts, activeJobs, lowStockParts, mechanicsActive, advisorCount, todayBookings] =
+    await Promise.all([
+      Job.aggregate([{ $match: { workshopId: workshop._id } }, { $group: { _id: "$status", count: { $sum: 1 } } }]),
+      Booking.aggregate([{ $match: { workshopId: workshop._id } }, { $group: { _id: "$status", count: { $sum: 1 } } }]),
+      Job.countDocuments({ workshopId: workshop._id, status: { $nin: ["COMPLETED", "CANCELLED", "DELIVERED"] } }),
+      InventoryPart.find({
+        workshopId: workshop._id,
+        status: "ACTIVE",
+        $expr: { $lte: ["$stock.quantity", "$stock.reorderLevel"] },
+      })
+        .select("partNumber name stock")
+        .sort({ "stock.quantity": 1 })
+        .limit(8),
+      Mechanic.countDocuments({ workshopId: workshop._id, status: { $ne: "INACTIVE" } }),
+      User.countDocuments({ role: "SERVICE_ADVISOR", status: "ACTIVE" }),
+      Booking.countDocuments({
+        workshopId: workshop._id,
+        status: { $nin: ["CANCELLED", "NO_SHOW", "COMPLETED"] },
+      }),
+    ]);
+
+  const startOfDay = new Date();
+  startOfDay.setHours(0, 0, 0, 0);
+  const endOfDay = new Date();
+  endOfDay.setHours(23, 59, 59, 999);
+
+  const bookingsToday = await Booking.countDocuments({
+    workshopId: workshop._id,
+    "appointment.date": { $gte: startOfDay, $lte: endOfDay },
+  });
+
+  const jobsByStatus = Object.fromEntries(jobCounts.map((item) => [item._id, item.count]));
+  const bookingsByStatus = Object.fromEntries(bookingCounts.map((item) => [item._id, item.count]));
+
+  return {
+    workshop: { _id: workshop._id, name: workshop.name, code: workshop.code },
+    jobsByStatus,
+    bookingsByStatus,
+    totalActiveJobs: activeJobs,
+    bookingsToday,
+    totalOpenBookings: todayBookings,
+    activeMechanics: mechanicsActive,
+    activeServiceAdvisors: advisorCount,
+    lowStockParts,
+    lowStockCount: lowStockParts.length,
+  };
+};
+
 module.exports = {
   createWorkshopService,
   getWorkshopByIdService,
   listWorkshopsService,
   updateWorkshopService,
   deleteWorkshopService,
+  getWorkshopOverviewService,
 };

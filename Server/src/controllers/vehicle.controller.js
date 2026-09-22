@@ -6,7 +6,10 @@ const {
   listVehiclesService,
   updateVehicleService,
   deleteVehicleService,
+  addVehicleImageService,
+  removeVehicleImageService,
 } = require("../services/vehicle.service.js");
+const { removeTempFile } = require("../services/media.service.js");
 
 const createVehicle = asyncHandler(async (req, res) => {
   const vehicle = await createVehicleService(req.user._id, req.body);
@@ -38,10 +41,28 @@ const deleteVehicle = asyncHandler(async (req, res) => {
   return sendResponse(res, 200, "Vehicle deleted successfully", result);
 });
 
+const addVehicleImage = asyncHandler(async (req, res) => {
+  try {
+    const vehicle = await addVehicleImageService(req.params.id, req.file, req.user);
+
+    return sendResponse(res, 201, "Vehicle photo added successfully", vehicle);
+  } finally {
+    await removeTempFile(req.file);
+  }
+});
+
+const removeVehicleImage = asyncHandler(async (req, res) => {
+  const vehicle = await removeVehicleImageService(req.params.id, req.query.publicId, req.user);
+
+  return sendResponse(res, 200, "Vehicle photo removed successfully", vehicle);
+});
+
 module.exports = {
   createVehicle,
   getVehicleById,
   listVehicles,
   updateVehicle,
   deleteVehicle,
+  addVehicleImage,
+  removeVehicleImage,
 };

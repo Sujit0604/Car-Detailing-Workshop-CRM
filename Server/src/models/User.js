@@ -90,10 +90,7 @@ const userSchema = new mongoose.Schema(
     },
     refreshTokenExpires: {
       type: Date,
-      default: null,
-      index: {
-        expires: 0,
-      },
+      default: null
     },
     verificationCode: {
         type: String,

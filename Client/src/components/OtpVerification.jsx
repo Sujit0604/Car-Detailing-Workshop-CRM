@@ -4,6 +4,7 @@ import { Mail, ArrowLeft } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { loginUser, verifyOtp } from '../services/authApi'
 import { useAuth } from '../contexts/authContext.js'
+import { getHomePath } from '../utils/routes'
 import Brand from './Brand'
 import { ACCENT, ACCENT_HOVER, FAINT, FOREGROUND, LINE_STRONG, MUTED, PANEL } from '../config/theme'
 
@@ -36,7 +37,7 @@ export default function OtpVerification({ email, password = '', onBack }) {
       const res = await verifyOtp({ email, code: otp })
       login(res.data.user, res.data.accessToken, res.data.refreshToken)
       toast.success(res.message || 'Email verified!')
-      navigate('/dashboard')
+      navigate(getHomePath(res.data.user.role))
     } catch (err) {
       toast.error(err.message)
       setDigits(Array(OTP_LENGTH).fill(''))

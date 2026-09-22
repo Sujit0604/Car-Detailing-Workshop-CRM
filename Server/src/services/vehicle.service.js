@@ -1,6 +1,8 @@
 const ApiError = require("../utils/ApiError.js");
 const Vehicle = require("../models/Vehicle.js");
 const logger = require("../utils/logger.js");
+const { uploadToBoth } = require("./storage/storage.service.js");
+const cloudinaryStorage = require("./storage/cloudinary.storage.js");
 
 const createVehicleService = async (ownerId, vehicleData) => {
   const { registrationNumber } = vehicleData;
@@ -103,10 +105,65 @@ const deleteVehicleService = async (vehicleId, user) => {
   return { _id: vehicle._id, status: vehicle.status };
 };
 
+const MAX_VEHICLE_IMAGES = 10;
+
+const addVehicleImageService = async (vehicleId, file, user) => {
+  const vehicle = await getVehicleByIdService(vehicleId, user);
+
+  if ((vehicle.images || []).length >= MAX_VEHICLE_IMAGES) {
+    throw new ApiError(400, `A vehicle can have at most ${MAX_VEHICLE_IMAGES} photos`);
+  }
+
+  const stored = await uploadToBoth({ file, userId: user._id });
+
+  vehicle.images.push({
+    url: stored.cloudinary.url,
+    publicId: stored.cloudinary.publicId,
+  });
+
+  await vehicle.save();
+
+  logger.info(`Vehicle image added: ${vehicle._id}`);
+
+  return vehicle;
+};
+
+const removeVehicleImageService = async (vehicleId, publicId, user) => {
+  if (!publicId) {
+    throw new ApiError(422, "publicId query param is required");
+  }
+
+  const vehicle = await getVehicleByIdService(vehicleId, user);
+
+  const image = (vehicle.images || []).find((img) => img.publicId === publicId);
+
+  if (!image) {
+    throw new ApiError(404, "Image not found on this vehicle");
+  }
+
+  vehicle.images = vehicle.images.filter((img) => img.publicId !== publicId);
+
+  await vehicle.save();
+
+  if (image.publicId) {
+    try {
+      await cloudinaryStorage.deleteFile(image.publicId, "image");
+    } catch (err) {
+      logger.warn(`Cloudinary delete failed for ${image.publicId}: ${err.message}`);
+    }
+  }
+
+  logger.info(`Vehicle image removed: ${vehicle._id}`);
+
+  return vehicle;
+};
+
 module.exports = {
   createVehicleService,
   getVehicleByIdService,
   listVehiclesService,
   updateVehicleService,
   deleteVehicleService,
+  addVehicleImageService,
+  removeVehicleImageService,
 };
