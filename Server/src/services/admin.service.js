@@ -1,0 +1,279 @@
+const ApiError = require("../utils/ApiError.js");
+const logger = require("../utils/logger.js");
+const User = require("../models/User.js");
+const Workshop = require("../models/Workshop.js");
+const Service = require("../models/Service.js");
+const ServiceCategory = require("../models/ServiceCategory.js");
+const Booking = require("../models/Booking.js");
+const Job = require("../models/Job.js");
+
+const USER_ROLES = ["CUSTOMER", "ADMIN", "WORKSHOP_MANAGER", "SERVICE_ADVISOR", "MECHANIC"];
+const USER_STATUSES = ["ACTIVE", "INACTIVE", "BLOCKED", "PENDING_VERIFICATION"];
+
+const getStatsService = async () => {
+  const [
+    totalUsers,
+    totalCustomers,
+    totalWorkshops,
+    totalServices,
+    totalCategories,
+    totalBookings,
+    activeBookings,
+    totalJobs,
+    activeJobs,
+    revenueResult,
+    bookingStatusCounts,
+    recentBookings,
+  ] = await Promise.all([
+    User.countDocuments(),
+    User.countDocuments({ role: "CUSTOMER" }),
+    Workshop.countDocuments(),
+    Service.countDocuments({ isActive: true }),
+    ServiceCategory.countDocuments({ isActive: true }),
+    Booking.countDocuments(),
+    Booking.countDocuments({ status: { $nin: ["CANCELLED", "NO_SHOW", "COMPLETED"] } }),
+    Job.countDocuments(),
+    Job.countDocuments({ status: { $nin: ["CANCELLED", "COMPLETED"] } }),
+    Booking.aggregate([
+      { $match: { status: "COMPLETED" } },
+      { $group: { _id: null, total: { $sum: "$pricing.total" } } },
+    ]),
+    Booking.aggregate([
+      { $group: { _id: "$status", count: { $sum: 1 } } },
+    ]),
+    Booking.find()
+      .populate("vehicleId", "registrationNumber make model")
+      .populate("workshopId", "name code")
+      .sort({ createdAt: -1 })
+      .limit(6),
+  ]);
+
+  const statusBreakdown = Object.fromEntries(
+    bookingStatusCounts.map((item) => [item._id, item.count]),
+  );
+
+  logger.info("Admin dashboard stats fetched");
+
+  return {
+    users: {
+      total: totalUsers,
+      customers: totalCustomers,
+    },
+    workshops: totalWorkshops,
+    services: totalServices,
+    serviceCategories: totalCategories,
+    bookings: {
+      total: totalBookings,
+      active: activeBookings,
+    },
+    jobs: {
+      total: totalJobs,
+      active: activeJobs,
+    },
+    revenue: revenueResult[0]?.total || 0,
+    bookingStatusBreakdown: statusBreakdown,
+    recentBookings,
+  };
+};
+
+const listUsersService = async (query) => {
+  const {
+    page = 1,
+    limit = 10,
+    role,
+    status,
+    search,
+    sortBy = "createdAt",
+    sortOrder = "desc",
+  } = query;
+
+  const filter = {};
+
+  if (role) filter.role = role;
+  if (status) filter.status = status;
+
+  if (search) {
+    const regex = new RegExp(search, "i");
+    filter.$or = [{ name: regex }, { email: regex }, { phone: regex }];
+  }
+
+  const sort = { [sortBy]: sortOrder === "asc" ? 1 : -1 };
+
+  const [users, total] = await Promise.all([
+    User.find(filter, "-password")
+      .sort(sort)
+      .skip((page - 1) * limit)
+      .limit(limit),
+    User.countDocuments(filter),
+  ]);
+
+  return {
+    users,
+    pagination: {
+      page,
+      limit,
+      total,
+      totalPages: Math.ceil(total / limit),
+    },
+  };
+};
+
+const updateUserStatusService = async (userId, status, actorId) => {
+  const user = await User.findById(userId);
+
+  if (!user) {
+    throw new ApiError(404, "User not found");
+  }
+
+  if (!USER_STATUSES.includes(status)) {
+    throw new ApiError(400, "Invalid user status");
+  }
+
+  if (user._id.toString() === actorId.toString()) {
+    throw new ApiError(400, "You cannot change your own status");
+  }
+
+  if (user.role === "ADMIN" && status !== "ACTIVE") {
+    throw new ApiError(400, "An admin account cannot be blocked or deactivated");
+  }
+
+  user.status = status;
+
+  await user.save();
+
+  logger.info(`User ${user._id} status -> ${status} (by ${actorId})`);
+
+  return { _id: user._id, name: user.name, role: user.role, status: user.status };
+};
+
+const updateUserRoleService = async (userId, role, actorId) => {
+  const user = await User.findById(userId);
+
+  if (!user) {
+    throw new ApiError(404, "User not found");
+  }
+
+  if (!USER_ROLES.includes(role)) {
+    throw new ApiError(400, "Invalid user role");
+  }
+
+  if (user._id.toString() === actorId.toString()) {
+    throw new ApiError(400, "You cannot change your own role");
+  }
+
+  if (user.role === "ADMIN" && role !== "ADMIN") {
+    throw new ApiError(400, "An admin account cannot be demoted");
+  }
+
+  user.role = role;
+
+  await user.save();
+
+  logger.info(`User ${user._id} role -> ${role} (by ${actorId})`);
+
+  return { _id: user._id, name: user.name, role: user.role, status: user.status };
+};
+
+const listAllBookingsService = async (query) => {
+  const {
+    page = 1,
+    limit = 10,
+    status,
+    paymentStatus,
+    fromDate,
+    toDate,
+    sortBy = "createdAt",
+    sortOrder = "desc",
+  } = query;
+
+  const filter = {};
+
+  if (status) filter.status = status;
+  if (paymentStatus) filter.paymentStatus = paymentStatus;
+
+  if (fromDate || toDate) {
+    const dateFilter = {};
+    if (fromDate) dateFilter.$gte = new Date(new Date(fromDate).setHours(0, 0, 0, 0));
+    if (toDate) dateFilter.$lte = new Date(new Date(toDate).setHours(23, 59, 59, 999));
+    filter["appointment.date"] = dateFilter;
+  }
+
+  const sort = { [sortBy]: sortOrder === "asc" ? 1 : -1 };
+
+  const [bookings, total] = await Promise.all([
+    Booking.find(filter)
+      .populate("customerId", "name email phone")
+      .populate("vehicleId", "registrationNumber make model")
+      .populate("workshopId", "name code")
+      .sort(sort)
+      .skip((page - 1) * limit)
+      .limit(limit),
+    Booking.countDocuments(filter),
+  ]);
+
+  return {
+    bookings,
+    pagination: {
+      page,
+      limit,
+      total,
+      totalPages: Math.ceil(total / limit),
+    },
+  };
+};
+
+const listAllJobsService = async (query) => {
+  const {
+    page = 1,
+    limit = 10,
+    status,
+    fromDate,
+    toDate,
+    sortBy = "createdAt",
+    sortOrder = "desc",
+  } = query;
+
+  const filter = {};
+
+  if (status) filter.status = status;
+
+  if (fromDate || toDate) {
+    const dateFilter = {};
+    if (fromDate) dateFilter.$gte = new Date(fromDate);
+    if (toDate) dateFilter.$lte = new Date(toDate);
+    filter.createdAt = dateFilter;
+  }
+
+  const sort = { [sortBy]: sortOrder === "asc" ? 1 : -1 };
+
+  const [jobs, total] = await Promise.all([
+    Job.find(filter)
+      .populate("bookingId", "bookingNumber")
+      .populate("customerId", "name phone")
+      .populate("vehicleId", "registrationNumber make model")
+      .populate("workshopId", "name code")
+      .sort(sort)
+      .skip((page - 1) * limit)
+      .limit(limit),
+    Job.countDocuments(filter),
+  ]);
+
+  return {
+    jobs,
+    pagination: {
+      page,
+      limit,
+      total,
+      totalPages: Math.ceil(total / limit),
+    },
+  };
+};
+
+module.exports = {
+  getStatsService,
+  listUsersService,
+  updateUserStatusService,
+  updateUserRoleService,
+  listAllBookingsService,
+  listAllJobsService,
+};

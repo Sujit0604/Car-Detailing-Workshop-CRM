@@ -2,7 +2,10 @@ const ApiError = require("../utils/ApiError.js");
 const User = require("../models/User.js");
 const { generateOTP } = require("../utils/generateOTP.js");
 const { sendVerificationCode, sendWelcomeEmail } = require("../utils/Email.js");
+const { verifyRefreshToken } = require("../utils/jwt.js");
 const logger = require("../utils/logger.js");
+
+const REFRESH_TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 
 const registerService = async (name, email, password, gender, phone, role) => {
@@ -271,8 +274,95 @@ const verifyOtpService = async (email, code) => {
 }
 
 
+const refreshTokenService = async (providedToken) => {
+  if (!providedToken) {
+    throw new ApiError(401, "Refresh token is required");
+  }
+
+  let payload;
+
+  try {
+    payload = await verifyRefreshToken(providedToken);
+  } catch (error) {
+    throw new ApiError(401, "Invalid or expired refresh token");
+  }
+
+  const user = await User.findById(payload.id);
+
+  if (!user) {
+    throw new ApiError(401, "User not found");
+  }
+
+  if (user.status === "BLOCKED") {
+    throw new ApiError(403, "Your account is blocked.");
+  }
+
+  if (!user.refreshToken || user.refreshToken !== providedToken) {
+    user.refreshToken = null;
+    user.refreshTokenExpires = null;
+    await user.save();
+    throw new ApiError(401, "Refresh token reuse detected. Please login again.");
+  }
+
+  if (!user.refreshTokenExpires || user.refreshTokenExpires < new Date()) {
+    user.refreshToken = null;
+    user.refreshTokenExpires = null;
+    await user.save();
+    throw new ApiError(401, "Refresh token expired. Please login again.");
+  }
+
+  const refToken = await user.generateRefreshToken();
+
+  user.refreshToken = refToken;
+  user.refreshTokenExpires = new Date(Date.now() + REFRESH_TOKEN_TTL_MS).toISOString();
+
+  await user.save();
+
+  logger.info(`Refresh token rotated for user: ${user._id}`);
+
+  const accToken = await user.generateAccessToken();
+
+  const sendUser = {
+    _id: user._id,
+    name: user.name,
+    email: user.email,
+    role: user.role,
+  };
+
+  return {
+    user: sendUser,
+    accessToken: accToken,
+    refreshToken: refToken,
+  };
+};
+
+const logoutService = async (providedToken) => {
+  if (!providedToken) {
+    return { message: "Logged out successfully" };
+  }
+
+  try {
+    const payload = await verifyRefreshToken(providedToken);
+    const user = await User.findById(payload.id);
+
+    if (user) {
+      user.refreshToken = null;
+      user.refreshTokenExpires = null;
+      await user.save();
+      logger.info(`User logged out: ${user._id}`);
+    }
+  } catch (error) {
+    // best effort - clear session client side even if token is invalid/expired
+  }
+
+  return { message: "Logged out successfully" };
+};
+
+
 module.exports = {
     registerService,
     loginService,
-    verifyOtpService
+    verifyOtpService,
+    refreshTokenService,
+    logoutService
 }

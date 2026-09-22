@@ -2,7 +2,9 @@ const express = require("express");
 const { 
     register,
     login,
-    verifyOtp
+    verifyOtp,
+    refreshToken,
+    logout
 } = require("../controllers/auth.controller.js");
 const {
     loginLimiter,
@@ -15,6 +17,8 @@ const {
   registerSchema,
   loginSchema,
   verifyOtpSchema,
+  refreshTokenSchema,
+  logoutSchema,
 } = require("../validators/auth.validator.js");
 
 const authRouter = express.Router();
@@ -52,6 +56,20 @@ authRouter.post(
     logRoute("Verify-Otp"),
     validate(verifyOtpSchema),
     verifyOtp
+)
+
+authRouter.post(
+    '/refresh',
+    logRoute("Refresh"),
+    validate(refreshTokenSchema),
+    refreshToken
+)
+
+authRouter.post(
+    '/logout',
+    logRoute("Logout"),
+    validate(logoutSchema),
+    logout
 )
 
 

@@ -5,7 +5,7 @@ const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8001/api/v1'
 
 const api = axios.create({ baseURL: BASE_URL })
 
-const STORAGE_KEY = 'krom_auth'
+const STORAGE_KEY = 'krom_admin_auth'
 
 function readAuth() {
   try {
@@ -19,7 +19,7 @@ function readAuth() {
 function writeAuth(auth) {
   if (auth) localStorage.setItem(STORAGE_KEY, JSON.stringify(auth))
   else localStorage.removeItem(STORAGE_KEY)
-  window.dispatchEvent(new CustomEvent('krom-auth-updated', { detail: auth }))
+  window.dispatchEvent(new CustomEvent('krom-admin-auth-updated', { detail: auth }))
 }
 
 let isRefreshing = false

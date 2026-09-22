@@ -1,0 +1,56 @@
+@import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;500;600;700;800;900&family=Barlow:wght@300;400;500;600;700&display=swap');
+@import "tailwindcss";
+
+:root {
+  --background: #0c0c0c;
+  --foreground: #f0ede8;
+  --primary: #d94f3d;
+  --primary-hover: #e8643a;
+  --muted-foreground: #8a8580;
+  --faint: #4a4a4a;
+  --panel: #111;
+  --panel-strong: #151515;
+  --section-alt: #0e0e0e;
+  --line: #1e1e1e;
+  --line-strong: #2a2a2a;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  font-family: 'Barlow', sans-serif;
+  background-color: var(--background);
+  color: var(--foreground);
+  -webkit-font-smoothing: antialiased;
+}
+
+[id] {
+  scroll-margin-top: 4rem;
+}
+
+input[type='date'],
+input[type='time'] {
+  color-scheme: dark;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+
+*:hover {
+  scrollbar-color: #2a2a2a transparent;
+}
+
+::selection {
+  background: #d94f3d;
+  color: #fff;
+}

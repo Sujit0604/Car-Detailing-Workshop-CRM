@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { AuthContext } from './authContext'
 import { logoutUser } from '../services/authApi'
 
-const STORAGE_KEY = 'krom_auth'
+const STORAGE_KEY = 'krom_admin_auth'
 
 function getStoredAuth() {
   try {
@@ -18,8 +18,8 @@ export function AuthProvider({ children }) {
 
   useEffect(() => {
     const handleAuthUpdated = (event) => setAuth(event.detail)
-    window.addEventListener('krom-auth-updated', handleAuthUpdated)
-    return () => window.removeEventListener('krom-auth-updated', handleAuthUpdated)
+    window.addEventListener('krom-admin-auth-updated', handleAuthUpdated)
+    return () => window.removeEventListener('krom-admin-auth-updated', handleAuthUpdated)
   }, [])
 
   useEffect(() => {

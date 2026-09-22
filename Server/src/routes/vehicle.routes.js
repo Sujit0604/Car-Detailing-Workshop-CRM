@@ -28,7 +28,7 @@ const logRoute = (routeName) => (req, res, next) => {
 
 vehicleRouter.get(
   "/",
-  authorize("CUSTOMER", "ADMIN", "WORKSHOP_MANAGER", "SERVICE_ADVISOR", "MECHANIC"),
+  authorize("CUSTOMER", "ADMIN"),
   validate(listVehiclesQuerySchema),
   logRoute("List"),
   listVehicles
@@ -44,7 +44,7 @@ vehicleRouter.post(
 
 vehicleRouter.get(
   "/:id",
-  authorize("CUSTOMER", "ADMIN", "WORKSHOP_MANAGER", "SERVICE_ADVISOR", "MECHANIC"),
+  authorize("CUSTOMER", "ADMIN"),
   validate(vehicleIdParamSchema),
   logRoute("GetById"),
   getVehicleById

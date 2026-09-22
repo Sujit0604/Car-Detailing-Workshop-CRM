@@ -50,4 +50,18 @@ const verifyOtpSchema = z.object({
   }),
 });
 
-module.exports = { registerSchema, loginSchema, verifyOtpSchema };
+const refreshTokenSchema = z.object({
+  body: z.object({
+    refreshToken: z
+      .string({ required_error: "Refresh token is required" })
+      .min(1, "Refresh token is required"),
+  }),
+});
+
+const logoutSchema = z.object({
+  body: z.object({
+    refreshToken: z.string().min(1).optional(),
+  }),
+});
+
+module.exports = { registerSchema, loginSchema, verifyOtpSchema, refreshTokenSchema, logoutSchema };

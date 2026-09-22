@@ -28,7 +28,7 @@ const getVehicleByIdService = async (vehicleId, user) => {
     throw new ApiError(404, "Vehicle not found");
   }
 
-  if (user.role === "CUSTOMER" && vehicle.ownerId.toString() !== user._id.toString()) {
+  if (user.role !== "ADMIN" && vehicle.ownerId.toString() !== user._id.toString()) {
     throw new ApiError(403, "You don't have permission to access this vehicle");
   }
 
@@ -40,7 +40,7 @@ const listVehiclesService = async (user, query) => {
 
   const filter = {};
 
-  if (user.role === "CUSTOMER") {
+  if (user.role !== "ADMIN") {
     filter.ownerId = user._id;
   }
 

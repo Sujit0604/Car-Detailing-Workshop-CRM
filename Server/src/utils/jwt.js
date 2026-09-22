@@ -52,7 +52,7 @@ const verifyRefreshToken = async (token) => {
   try {
     return jwt.verify(token, env.REFRESH_TOKEN_SECRET, {
       issuer: env.JWT_ISSUER,
-      audience: JWT_AUDIENCE,
+      audience: env.JWT_AUDIENCE,
     });
   } catch (error) {
     throw new ApiError(401, "Invalid or Expired Refresh Token");
