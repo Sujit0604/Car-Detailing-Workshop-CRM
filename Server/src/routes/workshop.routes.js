@@ -10,6 +10,7 @@ const {
   updateWorkshop,
   deleteWorkshop,
   getWorkshopOverview,
+  getWorkshopStaff,
 } = require("../controllers/workshop.controller.js");
 const {
   createWorkshopSchema,
@@ -55,6 +56,14 @@ workshopRouter.get(
   validate(workshopIdParamSchema),
   logRoute("GetOverview"),
   getWorkshopOverview
+);
+
+workshopRouter.get(
+  "/:id/staff",
+  authorize("ADMIN", "WORKSHOP_MANAGER", "SERVICE_ADVISOR"),
+  validate(workshopIdParamSchema),
+  logRoute("GetStaff"),
+  getWorkshopStaff
 );
 
 workshopRouter.patch(

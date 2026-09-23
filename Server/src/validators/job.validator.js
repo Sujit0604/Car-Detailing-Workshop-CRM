@@ -22,9 +22,14 @@ const JOB_STATUSES = [
   "CANCELLED",
 ];
 
+const bookingIdentifierSchema = z
+  .string()
+  .trim()
+  .min(1, "Booking id or booking number is required");
+
 const createJobSchema = z.object({
   body: z.object({
-    bookingId: objectIdSchema,
+    bookingId: z.union([objectIdSchema, bookingIdentifierSchema]),
     serviceAdvisorId: objectIdSchema.optional(),
   }),
 });
@@ -113,6 +118,7 @@ const estimateRespondSchema = z.object({
   body: z.object({
     action: z.enum(["APPROVED", "REJECTED"]),
     remarks: z.string().trim().optional(),
+    cancelBooking: z.boolean().optional(),
   }),
 });
 

@@ -5,6 +5,7 @@ const {
   listUsersService,
   updateUserStatusService,
   updateUserRoleService,
+  updateUserWorkshopService,
   listAllBookingsService,
   listAllJobsService,
 } = require("../services/admin.service.js");
@@ -33,6 +34,12 @@ const updateUserRole = asyncHandler(async (req, res) => {
   return sendResponse(res, 200, "User role updated successfully", result);
 });
 
+const updateUserWorkshop = asyncHandler(async (req, res) => {
+  const result = await updateUserWorkshopService(req.params.id, req.body.workshopId, req.user._id);
+
+  return sendResponse(res, 200, "User workshop updated successfully", result);
+});
+
 const listAllBookings = asyncHandler(async (req, res) => {
   const result = await listAllBookingsService(req.query);
 
@@ -50,6 +57,7 @@ module.exports = {
   listUsers,
   updateUserStatus,
   updateUserRole,
+  updateUserWorkshop,
   listAllBookings,
   listAllJobs,
 };

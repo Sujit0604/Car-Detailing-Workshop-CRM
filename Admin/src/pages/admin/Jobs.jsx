@@ -1,14 +1,15 @@
 import { useEffect, useState } from 'react'
 import toast from 'react-hot-toast'
-import { ClipboardList } from 'lucide-react'
+import { ClipboardList, Wrench, Plus } from 'lucide-react'
 import AdminNav from '../../components/AdminNav'
 import StatusBadge from '../../components/StatusBadge'
 import Spinner from '../../components/Spinner'
 import EmptyState from '../../components/EmptyState'
 import Modal from '../../components/Modal'
 import { SelectInput } from '../../components/Field'
-import { listAllJobs } from '../../services/adminApi'
-import { updateJobStatus } from '../../services/jobApi'
+import { listAllJobs, listAllBookings } from '../../services/adminApi'
+import { updateJobStatus, assignMechanic, createJob } from '../../services/jobApi'
+import { listMechanics } from '../../services/mechanicApi'
 import { JOB_NEXT_STATUS, formatDate } from '../../utils/transitions'
 import {
   ACCENT,
@@ -41,6 +42,8 @@ const JOB_FILTERS = [
   'CANCELLED',
 ]
 
+const TERMINAL_JOB_STATUSES = ['COMPLETED', 'CANCELLED']
+
 export default function Jobs() {
   const [jobs, setJobs] = useState([])
   const [pagination, setPagination] = useState({ page: 1, totalPages: 1, total: 0 })
@@ -51,6 +54,17 @@ export default function Jobs() {
   const [statusTarget, setStatusTarget] = useState(null)
   const [statusValue, setStatusValue] = useState('')
   const [updating, setUpdating] = useState(false)
+
+  const [assignTarget, setAssignTarget] = useState(null)
+  const [assignValue, setAssignValue] = useState('')
+  const [mechanics, setMechanics] = useState([])
+  const [mechanicsLoading, setMechanicsLoading] = useState(false)
+
+  const [jobModal, setJobModal] = useState(false)
+  const [bookingId, setBookingId] = useState('')
+  const [creating, setCreating] = useState(false)
+  const [bookings, setBookings] = useState([])
+  const [bookingsLoading, setBookingsLoading] = useState(false)
 
   const buildParams = () => {
     const params = { page, limit: 15, sortBy: 'createdAt', sortOrder: 'desc' }
@@ -111,6 +125,84 @@ export default function Jobs() {
     }
   }
 
+  const openAssign = async (job) => {
+    setAssignTarget(job)
+    setAssignValue(job.assignedMechanicId?._id || '')
+    setMechanics([])
+    setMechanicsLoading(true)
+    try {
+      const workshopId = job.workshopId?._id || job.workshopId
+      if (!workshopId) throw new Error('This job has no workshop')
+      const res = await listMechanics({ workshopId, limit: 100 })
+      const list = res.data?.mechanics || []
+      setMechanics(Array.isArray(list) ? list : [])
+    } catch (err) {
+      toast.error(err.message)
+    } finally {
+      setMechanicsLoading(false)
+    }
+  }
+
+  const handleAssign = async () => {
+    setUpdating(true)
+    try {
+      await assignMechanic(assignTarget._id, { mechanicId: assignValue })
+      toast.success('Mechanic assigned')
+      setAssignTarget(null)
+      reload()
+    } catch (err) {
+      toast.error(err.message)
+    } finally {
+      setUpdating(false)
+    }
+  }
+
+  const openCreateJob = async () => {
+    setBookings([])
+    setBookingId('')
+    setJobModal(true)
+    setBookingsLoading(true)
+    try {
+      const bookingsRes = await listAllBookings({ limit: 100, sortBy: 'createdAt', sortOrder: 'desc' })
+      const allBookings = bookingsRes.data?.bookings || []
+      const jobBookingIds = new Set(
+        (jobs || [])
+          .map((j) => {
+            if (j.bookingId && typeof j.bookingId === 'object') return j.bookingId._id?.toString()
+            if (j.bookingId) return j.bookingId.toString()
+            return null
+          })
+          .filter(Boolean),
+      )
+      const eligible = allBookings.filter(
+        (b) =>
+          !jobBookingIds.has(b._id?.toString()) &&
+          !['CANCELLED', 'NO_SHOW', 'COMPLETED'].includes(b.status),
+      )
+      setBookings(eligible)
+    } catch (err) {
+      toast.error(err.message)
+    } finally {
+      setBookingsLoading(false)
+    }
+  }
+
+  const handleCreateJob = async (e) => {
+    e.preventDefault()
+    setCreating(true)
+    try {
+      const res = await createJob({ bookingId })
+      toast.success(res.message || 'Job created')
+      setJobModal(false)
+      setBookingId('')
+      reload()
+    } catch (err) {
+      toast.error(err.message)
+    } finally {
+      setCreating(false)
+    }
+  }
+
   const goToPage = (next) => {
     if (next < 1 || next > pagination.totalPages) return
     setPage(next)
@@ -122,19 +214,32 @@ export default function Jobs() {
       <AdminNav />
 
       <div className="max-w-7xl mx-auto px-4 sm:px-8 py-8 space-y-6">
-        <div>
-          <div className="flex items-center gap-3 mb-1">
-            <ClipboardList size={22} style={{ color: ACCENT }} />
-            <h1
-              className="text-3xl font-black uppercase tracking-widest"
-              style={{ fontFamily: "'Barlow Condensed', sans-serif" }}
-            >
-              Jobs
-            </h1>
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+          <div>
+            <div className="flex items-center gap-3 mb-1">
+              <ClipboardList size={22} style={{ color: ACCENT }} />
+              <h1
+                className="text-3xl font-black uppercase tracking-widest"
+                style={{ fontFamily: "'Barlow Condensed', sans-serif" }}
+              >
+                Jobs
+              </h1>
+            </div>
+            <p className="text-sm" style={{ color: MUTED }}>
+              {pagination.total} jobs across all workshops
+            </p>
           </div>
-          <p className="text-sm" style={{ color: MUTED }}>
-            {pagination.total} jobs across all workshops
-          </p>
+          <button
+            type="button"
+            onClick={openCreateJob}
+            className="inline-flex items-center gap-2 px-6 py-3 text-sm font-black uppercase tracking-widest transition-all duration-200 cursor-pointer"
+            style={primaryButtonStyle}
+            onMouseEnter={(e) => (e.currentTarget.style.background = ACCENT_HOVER)}
+            onMouseLeave={(e) => (e.currentTarget.style.background = ACCENT)}
+          >
+            <Plus size={16} />
+            Create Job
+          </button>
         </div>
 
         <div className="flex items-center gap-2 overflow-x-auto pb-2">
@@ -166,7 +271,7 @@ export default function Jobs() {
             <table className="w-full text-left">
               <thead>
                 <tr style={{ borderBottom: `1px solid ${LINE_STRONG}` }}>
-                  {['Job', 'Booking', 'Customer', 'Vehicle', 'Workshop', 'Created', 'Status', 'Actions'].map((h) => (
+                  {['Job', 'Booking', 'Customer', 'Vehicle', 'Workshop', 'Assignee', 'Created', 'Status', 'Actions'].map((h) => (
                     <th
                       key={h}
                       className="px-5 py-3 text-[11px] font-bold uppercase tracking-widest whitespace-nowrap"
@@ -205,6 +310,13 @@ export default function Jobs() {
                     <td className="px-5 py-3.5 text-sm" style={{ color: MUTED }}>
                       {j.workshopId?.name || '—'}
                     </td>
+                    <td className="px-5 py-3.5 text-sm" style={{ color: FOREGROUND }}>
+                      {j.assignedMechanicId
+                        ? j.assignedMechanicId.userId
+                          ? (j.assignedMechanicId.userId.name || j.assignedMechanicId.employeeCode)
+                          : (j.assignedMechanicId.employeeCode || 'Mechanic')
+                        : <span style={{ color: MUTED }}>Unassigned</span>}
+                    </td>
                     <td className="px-5 py-3.5 text-sm whitespace-nowrap" style={{ color: MUTED }}>
                       {formatDate(j.createdAt)}
                     </td>
@@ -212,17 +324,31 @@ export default function Jobs() {
                       <StatusBadge status={j.status} />
                     </td>
                     <td className="px-5 py-3.5">
-                      <button
-                        type="button"
-                        onClick={() => openStatus(j)}
-                        disabled={(JOB_NEXT_STATUS[j.status] || []).length === 0}
-                        className="px-3 py-1.5 text-[10px] font-black uppercase tracking-widest transition-colors duration-200 cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
-                        style={ghostButtonStyle}
-                        onMouseEnter={(e) => { if (!e.currentTarget.disabled) e.currentTarget.style.borderColor = ACCENT; if (!e.currentTarget.disabled) e.currentTarget.style.color = ACCENT }}
-                        onMouseLeave={(e) => { e.currentTarget.style.borderColor = LINE_STRONG; e.currentTarget.style.color = '#8a8580' }}
-                      >
-                        Status
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => openAssign(j)}
+                          disabled={TERMINAL_JOB_STATUSES.includes(j.status)}
+                          className="inline-flex items-center gap-1 px-3 py-1.5 text-[10px] font-black uppercase tracking-widest transition-colors duration-200 cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
+                          style={ghostButtonStyle}
+                          onMouseEnter={(e) => { if (!e.currentTarget.disabled) e.currentTarget.style.borderColor = ACCENT; if (!e.currentTarget.disabled) e.currentTarget.style.color = ACCENT }}
+                          onMouseLeave={(e) => { e.currentTarget.style.borderColor = LINE_STRONG; e.currentTarget.style.color = '#8a8580' }}
+                        >
+                          <Wrench size={11} />
+                          Assign
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => openStatus(j)}
+                          disabled={(JOB_NEXT_STATUS[j.status] || []).length === 0}
+                          className="px-3 py-1.5 text-[10px] font-black uppercase tracking-widest transition-colors duration-200 cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
+                          style={ghostButtonStyle}
+                          onMouseEnter={(e) => { if (!e.currentTarget.disabled) e.currentTarget.style.borderColor = ACCENT; if (!e.currentTarget.disabled) e.currentTarget.style.color = ACCENT }}
+                          onMouseLeave={(e) => { e.currentTarget.style.borderColor = LINE_STRONG; e.currentTarget.style.color = '#8a8580' }}
+                        >
+                          Status
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -299,6 +425,104 @@ export default function Jobs() {
             {updating ? 'Updating...' : 'Update Status'}
           </button>
         </div>
+      </Modal>
+
+      <Modal
+        open={!!assignTarget}
+        onClose={() => setAssignTarget(null)}
+        title={`Assign Mechanic · ${assignTarget?.jobNumber || ''}`}
+      >
+        <SelectInput
+          label="Mechanic"
+          required
+          placeholder={mechanicsLoading ? 'Loading mechanics…' : 'Select a mechanic'}
+          value={assignValue}
+          onChange={(e) => setAssignValue(e.target.value)}
+        >
+          {assignValue === '' && <option value="" disabled style={{ background: PANEL }}>Select a mechanic</option>}
+          {mechanicsLoading ? (
+            <option disabled style={{ background: PANEL }}>Loading mechanics…</option>
+          ) : (
+            mechanics.map((m) => (
+              <option key={m._id} value={m._id} style={{ background: PANEL }}>
+                {m.userId?.name || m.employeeCode}
+                {(m.specialization || []).length > 0 ? ` · ${m.specialization.join(', ')}` : ''}
+              </option>
+            ))
+          )}
+        </SelectInput>
+        <p className="text-xs mt-2" style={{ color: MUTED }}>
+          Workshop: {assignTarget?.workshopId?.name || '—'}
+        </p>
+        <div className="flex items-center justify-end gap-3 mt-5">
+          <button
+            type="button"
+            onClick={() => setAssignTarget(null)}
+            className="px-5 py-3 text-xs font-black uppercase tracking-widest transition-colors duration-200 cursor-pointer"
+            style={ghostButtonStyle}
+            onMouseEnter={(e) => { e.currentTarget.style.borderColor = ACCENT; e.currentTarget.style.color = ACCENT }}
+            onMouseLeave={(e) => { e.currentTarget.style.borderColor = LINE_STRONG; e.currentTarget.style.color = '#8a8580' }}
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={handleAssign}
+            disabled={updating || !assignValue}
+            className="px-6 py-3 text-xs font-black uppercase tracking-widest transition-all duration-200 cursor-pointer disabled:opacity-50"
+            style={primaryButtonStyle}
+            onMouseEnter={(e) => { if (!e.currentTarget.disabled) e.currentTarget.style.background = ACCENT_HOVER }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = ACCENT }}
+          >
+            {updating ? 'Assigning...' : 'Assign Mechanic'}
+          </button>
+        </div>
+      </Modal>
+
+      <Modal open={jobModal} onClose={() => setJobModal(false)} title="Create Job from Booking">
+        <form onSubmit={handleCreateJob} className="space-y-4" noValidate>
+          <SelectInput
+            label="Booking"
+            required
+            placeholder={bookingsLoading ? 'Loading bookings…' : 'Select a booking to convert'}
+            value={bookingId}
+            onChange={(e) => setBookingId(e.target.value)}
+          >
+            {bookingsLoading ? (
+              <option disabled style={{ background: PANEL }}>Loading bookings…</option>
+            ) : bookings.length === 0 ? (
+              <option disabled style={{ background: PANEL }}>No bookings available to convert</option>
+            ) : (
+              bookings.map((b) => (
+                <option key={b._id} value={b._id} style={{ background: PANEL }}>
+                  {b.bookingNumber} · {b.vehicleId ? `${b.vehicleId.make} ${b.vehicleId.model}` : 'Vehicle'} · {b.pricing?.total != null ? `₹${b.pricing.total.toLocaleString('en-IN')}` : ''}
+                </option>
+              ))
+            )}
+          </SelectInput>
+          <p className="text-xs" style={{ color: MUTED }}>
+            A job is created for the selected booking so the workshop can run it through the service
+            pipeline (check-in → inspection → estimate → work → delivery).
+          </p>
+          <div className="flex items-center justify-end gap-3 pt-2">
+            <button
+              type="button"
+              onClick={() => setJobModal(false)}
+              className="px-5 py-3 text-xs font-black uppercase tracking-widest transition-colors duration-200 cursor-pointer"
+              style={ghostButtonStyle}
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={creating || !bookingId}
+              className="px-6 py-3 text-xs font-black uppercase tracking-widest transition-all duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+              style={primaryButtonStyle}
+            >
+              {creating ? 'Creating...' : 'Create Job'}
+            </button>
+          </div>
+        </form>
       </Modal>
     </div>
   )

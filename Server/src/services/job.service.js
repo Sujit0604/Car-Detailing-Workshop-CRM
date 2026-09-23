@@ -1,4 +1,5 @@
 const { v4: uuidv4 } = require("uuid");
+const mongoose = require("mongoose");
 const ApiError = require("../utils/ApiError.js");
 const logger = require("../utils/logger.js");
 const Job = require("../models/Job.js");
@@ -86,9 +87,18 @@ const assertMechanicCanUpdate = async (job, user) => {
   }
 };
 
-const createJobFromBookingService = async (bookingId, serviceAdvisorId = null) => {
-  const booking = await Booking.findById(bookingId)
+const findBookingByIdentifier = async (identifier) => {
+  if (mongoose.Types.ObjectId.isValid(identifier)) {
+    return Booking.findById(identifier)
+      .populate("services.serviceId", "durationMinutes");
+  }
+
+  return Booking.findOne({ bookingNumber: identifier.toUpperCase() })
     .populate("services.serviceId", "durationMinutes");
+};
+
+const createJobFromBookingService = async (bookingId, serviceAdvisorId = null) => {
+  const booking = await findBookingByIdentifier(bookingId);
 
   if (!booking) {
     throw new ApiError(404, "Booking not found");

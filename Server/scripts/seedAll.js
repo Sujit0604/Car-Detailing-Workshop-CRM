@@ -89,10 +89,10 @@ const SERVICES = [
 
 const USERS = [
   { name: "Admin Krom", email: "admin@kromdetail.com", password: "Admin@123", gender: "other", phone: "9990000001", role: "ADMIN" },
-  { name: "Aarav Sharma", email: "aarav@kromdetail.com", password: "Staff@123", gender: "male", phone: "9871000001", role: "WORKSHOP_MANAGER" },
-  { name: "Meera Iyer", email: "meera@kromdetail.com", password: "Staff@123", gender: "female", phone: "9871000002", role: "WORKSHOP_MANAGER" },
-  { name: "Rohan Mehta", email: "rohan@kromdetail.com", password: "Staff@123", gender: "male", phone: "9871000003", role: "SERVICE_ADVISOR" },
-  { name: "Divya Rao", email: "divya@kromdetail.com", password: "Staff@123", gender: "female", phone: "9871000004", role: "SERVICE_ADVISOR" },
+  { name: "Aarav Sharma", email: "aarav@kromdetail.com", password: "Staff@123", gender: "male", phone: "9871000001", role: "WORKSHOP_MANAGER", workshopCode: "SHAIN-01" },
+  { name: "Meera Iyer", email: "meera@kromdetail.com", password: "Staff@123", gender: "female", phone: "9871000002", role: "WORKSHOP_MANAGER", workshopCode: "SPEED-02" },
+  { name: "Rohan Mehta", email: "rohan@kromdetail.com", password: "Staff@123", gender: "male", phone: "9871000003", role: "SERVICE_ADVISOR", workshopCode: "SHAIN-01" },
+  { name: "Divya Rao", email: "divya@kromdetail.com", password: "Staff@123", gender: "female", phone: "9871000004", role: "SERVICE_ADVISOR", workshopCode: "SPEED-02" },
   { name: "Karan Singh", email: "karan@kromdetail.com", password: "Staff@123", gender: "male", phone: "9871000005", role: "MECHANIC" },
   { name: "Vikram Yadav", email: "vikram@kromdetail.com", password: "Staff@123", gender: "male", phone: "9871000006", role: "MECHANIC" },
   { name: "Anil Kumar", email: "anil@kromdetail.com", password: "Staff@123", gender: "male", phone: "9871000007", role: "MECHANIC" },
@@ -278,9 +278,24 @@ const seed = async () => {
     for (const s of await Service.find()) serviceMap.set(`${s.workshopId}_${s.slug}`, s);
 
     for (const u of USERS) {
+      const { workshopCode, ...userFields } = u;
       const existing = await User.findOne({ email: u.email });
-      if (!existing) {
-        await User.create({ ...u, needsVerification: false, emailVerified: true, phoneVerified: true, status: "ACTIVE", threeDayExpires: iso(addDays(new Date(), 3)) });
+      const userData = {
+        ...userFields,
+        needsVerification: false,
+        emailVerified: true,
+        phoneVerified: true,
+        status: "ACTIVE",
+        threeDayExpires: iso(addDays(new Date(), 3)),
+        workshopId: workshopCode ? workshopMap.get(workshopCode)?._id || null : null,
+      };
+      if (existing) {
+        if ((existing.workshopId?.toString() || null) !== (userData.workshopId?.toString() || null)) {
+          existing.workshopId = userData.workshopId || null;
+          await existing.save();
+        }
+      } else {
+        await User.create(userData);
       }
     }
     counts.users = await User.countDocuments();

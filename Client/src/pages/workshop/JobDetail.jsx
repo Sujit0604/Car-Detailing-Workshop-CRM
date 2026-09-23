@@ -335,11 +335,17 @@ export default function JobDetailPage() {
     }
   }
 
-  const handleRespond = async (action) => {
+  const handleRespond = async (action, cancelBooking = false) => {
     setUpdating(true)
     try {
-      await respondToEstimate(job._id, { action, remarks: respondRemarks || undefined })
-      toast.success(action === 'APPROVED' ? 'Estimate approved — work can begin' : 'Estimate rejected')
+      await respondToEstimate(job._id, {
+        action,
+        remarks: respondRemarks || undefined,
+        ...(cancelBooking ? { cancelBooking: true } : {}),
+      })
+      toast.success(cancelBooking
+        ? 'Booking cancelled — this job is closed'
+        : action === 'APPROVED' ? 'Estimate approved — work can begin' : 'Estimate rejected')
       setRespondOpen(false)
       setRespondRemarks('')
       load()
@@ -1010,7 +1016,7 @@ export default function JobDetailPage() {
         <div className="space-y-4">
           <p className="text-sm" style={{ color: MUTED }}>
             Approving authorises the workshop to begin work. Rejecting returns the job to the
-            service advisor to revise the estimate.
+            service advisor to revise the estimate — or you can reject and cancel the booking entirely.
           </p>
           <TextArea
             label="Remarks (optional)"
@@ -1027,6 +1033,22 @@ export default function JobDetailPage() {
               style={ghostButtonStyle}
             >
               Cancel
+            </button>
+            <button
+              type="button"
+              disabled={updating}
+              onClick={() => handleRespond('REJECTED', true)}
+              className="inline-flex items-center gap-2 px-5 py-3 text-xs font-black uppercase tracking-widest transition-colors duration-200 cursor-pointer disabled:opacity-50"
+              style={{
+                ...ghostButtonStyle,
+                color: '#f87171',
+                borderColor: '#7f2a24',
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.borderColor = '#f87171' }}
+              onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#7f2a24' }}
+            >
+              <Trash2 size={13} />
+              Reject &amp; Cancel Booking
             </button>
             <button
               type="button"

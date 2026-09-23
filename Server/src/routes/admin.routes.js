@@ -8,6 +8,7 @@ const {
   listUsers,
   updateUserStatus,
   updateUserRole,
+  updateUserWorkshop,
   listAllBookings,
   listAllJobs,
 } = require("../controllers/admin.controller.js");
@@ -16,6 +17,7 @@ const {
   userIdParamSchema,
   updateUserStatusSchema,
   updateUserRoleSchema,
+  updateUserWorkshopSchema,
 } = require("../validators/admin.validator.js");
 const {
   listBookingsQuerySchema,
@@ -58,6 +60,13 @@ adminRouter.patch(
   validate(updateUserRoleSchema),
   logRoute("UpdateUserRole"),
   updateUserRole
+);
+
+adminRouter.patch(
+  "/users/:id/workshop",
+  validate(updateUserWorkshopSchema),
+  logRoute("UpdateUserWorkshop"),
+  updateUserWorkshop
 );
 
 adminRouter.get(

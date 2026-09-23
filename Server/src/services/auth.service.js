@@ -7,6 +7,22 @@ const logger = require("../utils/logger.js");
 
 const REFRESH_TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
+const buildUserBrief = (user) => {
+  const workshopId = user.workshopId
+    ? typeof user.workshopId === "object" && user.workshopId._id
+      ? { _id: user.workshopId._id, name: user.workshopId.name, code: user.workshopId.code }
+      : user.workshopId
+    : null;
+
+  return {
+    _id: user._id,
+    name: user.name,
+    email: user.email,
+    role: user.role,
+    workshopId,
+  };
+};
+
 
 const registerService = async (name, email, password, gender, phone, role) => {
     const existingUser = await User.findOne({
@@ -49,12 +65,7 @@ const registerService = async (name, email, password, gender, phone, role) => {
     // send otp
     // sendVerificationCode(user.email, verificationCode);
 
-    const sendUser = {
-        _id: user._id,
-        name: user.name,
-        email: user.email,
-        role: user.role
-    }
+    const sendUser = buildUserBrief(user);
 
     const result = {
         user: sendUser,
@@ -66,7 +77,7 @@ const registerService = async (name, email, password, gender, phone, role) => {
 };
 
 const loginService = async (email, password) => {
-    const user = await User.findOne({ email }).select("+password");
+    const user = await User.findOne({ email }).select("+password").populate("workshopId", "name code");
 
     if(!user) {
         throw new ApiError(401, "Invalid Credentials");
@@ -154,12 +165,7 @@ const loginService = async (email, password) => {
 
     const accToken = await user.generateAccessToken();
 
-    const sendUser = {
-        _id: user._id,
-        name: user.name,
-        email: user.email,
-        role: user.role
-    };
+    const sendUser = buildUserBrief(user);
 
     const res = {
         user: sendUser,
@@ -174,7 +180,7 @@ const loginService = async (email, password) => {
 };
 
 const verifyOtpService = async (email, code) => {
-    const user = await User.findOne({ email });
+    const user = await User.findOne({ email }).populate("workshopId", "name code");
 
     if(!user) {
         throw new ApiError(401, "Invalid Credentials");
@@ -254,12 +260,7 @@ const verifyOtpService = async (email, code) => {
 
     const accToken = await user.generateAccessToken();
 
-    const sendUser = {
-        _id: user._id,
-        name: user.name,
-        email: user.email,
-        role: user.role
-    };
+    const sendUser = buildUserBrief(user);
 
     const result = {
       message: "Email verified!",
@@ -322,12 +323,7 @@ const refreshTokenService = async (providedToken) => {
 
   const accToken = await user.generateAccessToken();
 
-  const sendUser = {
-    _id: user._id,
-    name: user.name,
-    email: user.email,
-    role: user.role,
-  };
+  const sendUser = buildUserBrief(user);
 
   return {
     user: sendUser,
@@ -343,7 +339,7 @@ const logoutService = async (providedToken) => {
 
   try {
     const payload = await verifyRefreshToken(providedToken);
-    const user = await User.findById(payload.id);
+const user = await User.findById(payload.id).populate("workshopId", "name code");
 
     if (user) {
       user.refreshToken = null;

@@ -1,13 +1,14 @@
 import { useEffect, useState } from 'react'
 import toast from 'react-hot-toast'
-import { Users as UsersIcon, Search } from 'lucide-react'
+import { Users as UsersIcon, Search, Building2 } from 'lucide-react'
 import AdminNav from '../../components/AdminNav'
 import StatusBadge from '../../components/StatusBadge'
 import Spinner from '../../components/Spinner'
 import EmptyState from '../../components/EmptyState'
 import Modal from '../../components/Modal'
 import { SelectInput } from '../../components/Field'
-import { listUsers, updateUserStatus, updateUserRole } from '../../services/adminApi'
+import { listUsers, updateUserStatus, updateUserRole, assignUserWorkshop } from '../../services/adminApi'
+import { listWorkshops } from '../../services/workshopApi'
 import { USER_ROLES, USER_STATUSES, formatDateTime } from '../../utils/transitions'
 import { useAuth } from '../../contexts/authContext.js'
 import {
@@ -25,6 +26,7 @@ import {
 
 const ROLE_FILTERS = ['ALL', ...USER_ROLES]
 const STATUS_FILTERS = ['ALL', ...USER_STATUSES]
+const WORKSHOP_STAFF_ROLES = ['WORKSHOP_MANAGER', 'SERVICE_ADVISOR']
 
 export default function Users() {
   const { user: currentUser } = useAuth()
@@ -41,6 +43,10 @@ export default function Users() {
   const [statusValue, setStatusValue] = useState('')
   const [roleTarget, setRoleTarget] = useState(null)
   const [roleValue, setRoleValue] = useState('')
+  const [workshopTarget, setWorkshopTarget] = useState(null)
+  const [workshopValue, setWorkshopValue] = useState('')
+  const [workshops, setWorkshops] = useState([])
+  const [workshopsLoading, setWorkshopsLoading] = useState(false)
   const [updating, setUpdating] = useState(false)
 
   const buildParams = () => {
@@ -102,6 +108,36 @@ export default function Users() {
   const openRole = (u) => {
     setRoleTarget(u)
     setRoleValue(u.role)
+  }
+
+  const openWorkshop = async (u) => {
+    setWorkshopTarget(u)
+    setWorkshopValue(u.workshopId?._id || u.workshopId || 'none')
+    setWorkshopsLoading(true)
+    try {
+      const res = await listWorkshops({ limit: 100, sortBy: 'name', sortOrder: 'asc' })
+      setWorkshops(res.data?.workshops || [])
+    } catch (err) {
+      toast.error(err.message)
+    } finally {
+      setWorkshopsLoading(false)
+    }
+  }
+
+  const handleWorkshop = async () => {
+    setUpdating(true)
+    try {
+      await assignUserWorkshop(workshopTarget._id, {
+        workshopId: workshopValue === 'none' ? null : workshopValue,
+      })
+      toast.success('User workshop updated')
+      setWorkshopTarget(null)
+      reload()
+    } catch (err) {
+      toast.error(err.message)
+    } finally {
+      setUpdating(false)
+    }
   }
 
   const handleStatus = async () => {
@@ -239,7 +275,7 @@ export default function Users() {
             <table className="w-full text-left">
               <thead>
                 <tr style={{ borderBottom: `1px solid ${LINE_STRONG}` }}>
-                  {['User', 'Contact', 'Role', 'Status', 'Joined', 'Actions'].map((h) => (
+                  {['User', 'Contact', 'Role', 'Workshop', 'Status', 'Joined', 'Actions'].map((h) => (
                     <th
                       key={h}
                       className="px-5 py-3 text-[11px] font-bold uppercase tracking-widest whitespace-nowrap"
@@ -274,6 +310,13 @@ export default function Users() {
                     <td className="px-5 py-3.5">
                       <StatusBadge status={u.role} />
                     </td>
+                    <td className="px-5 py-3.5 text-sm" style={{ color: MUTED }}>
+                      {WORKSHOP_STAFF_ROLES.includes(u.role) ? (
+                        u.workshopId?.name
+                          ? <span style={{ color: FOREGROUND }}>{u.workshopId.name}<span className="text-xs" style={{ color: MUTED }}> · {u.workshopId.code}</span></span>
+                          : '—'
+                      ) : '—'}
+                    </td>
                     <td className="px-5 py-3.5">
                       <StatusBadge status={u.status} />
                     </td>
@@ -304,6 +347,19 @@ export default function Users() {
                         >
                           Role
                         </button>
+                        {WORKSHOP_STAFF_ROLES.includes(u.role) && (
+                          <button
+                            type="button"
+                            onClick={() => openWorkshop(u)}
+                            className="inline-flex items-center gap-1 px-3 py-1.5 text-[10px] font-black uppercase tracking-widest transition-colors duration-200 cursor-pointer"
+                            style={ghostButtonStyle}
+                            onMouseEnter={(e) => { e.currentTarget.style.borderColor = ACCENT; e.currentTarget.style.color = ACCENT }}
+                            onMouseLeave={(e) => { e.currentTarget.style.borderColor = LINE_STRONG; e.currentTarget.style.color = '#8a8580' }}
+                          >
+                            <Building2 size={11} />
+                            Workshop
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -420,6 +476,56 @@ export default function Users() {
             onMouseLeave={(e) => { e.currentTarget.style.background = ACCENT }}
           >
             {updating ? 'Updating...' : 'Update Role'}
+          </button>
+        </div>
+      </Modal>
+
+      <Modal
+        open={!!workshopTarget}
+        onClose={() => setWorkshopTarget(null)}
+        title={`Posting · ${workshopTarget?.name || ''}`}
+      >
+        <SelectInput
+          label="Assigned Workshop"
+          value={workshopValue}
+          onChange={(e) => setWorkshopValue(e.target.value)}
+        >
+          <option value="none" style={{ background: PANEL }}>Not assigned</option>
+          {workshopsLoading ? (
+            <option disabled style={{ background: PANEL }}>Loading workshops…</option>
+          ) : (
+            workshops.map((w) => (
+              <option key={w._id} value={w._id} style={{ background: PANEL }}>
+                {w.name}
+                {w.address?.city ? ` · ${w.address.city}` : ''}
+              </option>
+            ))
+          )}
+        </SelectInput>
+        <p className="text-xs mt-2" style={{ color: MUTED }}>
+          Where is this {workshopTarget?.role?.replace(/_/g, ' ')} posted? This scopes their work to one workshop.
+        </p>
+        <div className="flex items-center justify-end gap-3 mt-5">
+          <button
+            type="button"
+            onClick={() => setWorkshopTarget(null)}
+            className="px-5 py-3 text-xs font-black uppercase tracking-widest transition-colors duration-200 cursor-pointer"
+            style={ghostButtonStyle}
+            onMouseEnter={(e) => { e.currentTarget.style.borderColor = ACCENT; e.currentTarget.style.color = ACCENT }}
+            onMouseLeave={(e) => { e.currentTarget.style.borderColor = LINE_STRONG; e.currentTarget.style.color = '#8a8580' }}
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={handleWorkshop}
+            disabled={updating}
+            className="px-6 py-3 text-xs font-black uppercase tracking-widest transition-all duration-200 cursor-pointer disabled:opacity-50"
+            style={primaryButtonStyle}
+            onMouseEnter={(e) => { if (!e.currentTarget.disabled) e.currentTarget.style.background = ACCENT_HOVER }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = ACCENT }}
+          >
+            {updating ? 'Updating...' : 'Update Posting'}
           </button>
         </div>
       </Modal>

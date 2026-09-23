@@ -68,8 +68,39 @@ const listWorkshopsService = async (user, query) => {
     Workshop.countDocuments(filter),
   ]);
 
+  const workshopIds = workshops.map((w) => w._id);
+
+  const [mechanics, advisors, managers] = await Promise.all([
+    Mechanic.aggregate([
+      { $match: { workshopId: { $in: workshopIds }, status: { $ne: "INACTIVE" } } },
+      { $group: { _id: "$workshopId", count: { $sum: 1 } } },
+    ]),
+    User.aggregate([
+      { $match: { role: "SERVICE_ADVISOR", status: "ACTIVE", workshopId: { $in: workshopIds } } },
+      { $group: { _id: "$workshopId", count: { $sum: 1 } } },
+    ]),
+    User.aggregate([
+      { $match: { role: "WORKSHOP_MANAGER", status: "ACTIVE", workshopId: { $in: workshopIds } } },
+      { $group: { _id: "$workshopId", count: { $sum: 1 } } },
+    ]),
+  ]);
+
+  const toCountMap = (rows) => Object.fromEntries(rows.map((r) => [r._id.toString(), r.count]));
+  const mechanicCounts = toCountMap(mechanics);
+  const advisorCounts = toCountMap(advisors);
+  const managerCounts = toCountMap(managers);
+
+  const decorated = workshops.map((w) => ({
+    ...w.toObject(),
+    staff: {
+      managers: managerCounts[w._id.toString()] || 0,
+      advisors: advisorCounts[w._id.toString()] || 0,
+      mechanics: mechanicCounts[w._id.toString()] || 0,
+    },
+  }));
+
   return {
-    workshops,
+    workshops: decorated,
     pagination: {
       page,
       limit,
@@ -114,7 +145,7 @@ const deleteWorkshopService = async (workshopId) => {
 const getWorkshopOverviewService = async (workshopId) => {
   const workshop = await getWorkshopByIdService(workshopId);
 
-  const [jobCounts, bookingCounts, activeJobs, lowStockParts, mechanicsActive, advisorCount, todayBookings] =
+  const [jobCounts, bookingCounts, activeJobs, lowStockParts, mechanicsActive, advisorCount, managerCount, todayBookings] =
     await Promise.all([
       Job.aggregate([{ $match: { workshopId: workshop._id } }, { $group: { _id: "$status", count: { $sum: 1 } } }]),
       Booking.aggregate([{ $match: { workshopId: workshop._id } }, { $group: { _id: "$status", count: { $sum: 1 } } }]),
@@ -128,7 +159,8 @@ const getWorkshopOverviewService = async (workshopId) => {
         .sort({ "stock.quantity": 1 })
         .limit(8),
       Mechanic.countDocuments({ workshopId: workshop._id, status: { $ne: "INACTIVE" } }),
-      User.countDocuments({ role: "SERVICE_ADVISOR", status: "ACTIVE" }),
+      User.countDocuments({ role: "SERVICE_ADVISOR", status: "ACTIVE", workshopId: workshop._id }),
+      User.countDocuments({ role: "WORKSHOP_MANAGER", status: "ACTIVE", workshopId: workshop._id }),
       Booking.countDocuments({
         workshopId: workshop._id,
         status: { $nin: ["CANCELLED", "NO_SHOW", "COMPLETED"] },
@@ -157,8 +189,30 @@ const getWorkshopOverviewService = async (workshopId) => {
     totalOpenBookings: todayBookings,
     activeMechanics: mechanicsActive,
     activeServiceAdvisors: advisorCount,
+    activeWorkshopManagers: managerCount,
     lowStockParts,
     lowStockCount: lowStockParts.length,
+  };
+};
+
+const getWorkshopStaffService = async (workshopId) => {
+  const workshop = await getWorkshopByIdService(workshopId);
+
+  const [managers, advisors, mechanics] = await Promise.all([
+    User.find({ role: "WORKSHOP_MANAGER", workshopId: workshop._id }, "-password")
+      .sort({ createdAt: 1 }),
+    User.find({ role: "SERVICE_ADVISOR", workshopId: workshop._id }, "-password")
+      .sort({ createdAt: 1 }),
+    Mechanic.find({ workshopId: workshop._id })
+      .populate("userId", "name email phone role status")
+      .sort({ createdAt: 1 }),
+  ]);
+
+  return {
+    workshop: { _id: workshop._id, name: workshop.name, code: workshop.code },
+    managers,
+    advisors,
+    mechanics,
   };
 };
 
@@ -169,4 +223,5 @@ module.exports = {
   updateWorkshopService,
   deleteWorkshopService,
   getWorkshopOverviewService,
+  getWorkshopStaffService,
 };

@@ -1,13 +1,13 @@
 import { useEffect, useState, useCallback } from 'react'
 import toast from 'react-hot-toast'
-import { Building2, Plus, Pencil } from 'lucide-react'
+import { Building2, Plus, Pencil, Users, UserCog, Headset, Wrench } from 'lucide-react'
 import AdminNav from '../../components/AdminNav'
 import StatusBadge from '../../components/StatusBadge'
 import Spinner from '../../components/Spinner'
 import EmptyState from '../../components/EmptyState'
 import Modal from '../../components/Modal'
 import { TextInput, TextArea, SelectInput } from '../../components/Field'
-import { listWorkshops, createWorkshop, updateWorkshop } from '../../services/workshopApi'
+import { listWorkshops, getWorkshopStaff, createWorkshop, updateWorkshop } from '../../services/workshopApi'
 import { formatDate } from '../../utils/transitions'
 import {
   ACCENT,
@@ -50,6 +50,10 @@ export default function Workshops() {
   const [editing, setEditing] = useState(null)
   const [form, setForm] = useState(emptyForm)
   const [saving, setSaving] = useState(false)
+
+  const [staffTarget, setStaffTarget] = useState(null)
+  const [staffData, setStaffData] = useState(null)
+  const [staffLoading, setStaffLoading] = useState(false)
 
 const reload = useCallback(async () => {
     try {
@@ -168,6 +172,20 @@ const reload = useCallback(async () => {
     setLoading(true)
   }
 
+  const openStaff = async (w) => {
+    setStaffTarget(w)
+    setStaffData(null)
+    setStaffLoading(true)
+    try {
+      const res = await getWorkshopStaff(w._id)
+      setStaffData(res.data)
+    } catch (err) {
+      toast.error(err.message)
+    } finally {
+      setStaffLoading(false)
+    }
+  }
+
   return (
     <div className="min-h-screen" style={{ background: BACKGROUND, color: FOREGROUND }}>
       <AdminNav />
@@ -269,6 +287,16 @@ const reload = useCallback(async () => {
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="uppercase tracking-widest" style={{ fontFamily: "'Barlow Condensed', sans-serif" }}>
+                      Staff
+                    </span>
+                    <span style={{ color: FOREGROUND }}>
+                      <span style={{ color: ACCENT }}>{w.staff?.managers || 0}</span> mgr ·{' '}
+                      <span style={{ color: ACCENT }}>{w.staff?.advisors || 0}</span> advisor ·{' '}
+                      <span style={{ color: ACCENT }}>{w.staff?.mechanics || 0}</span> mechanic
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="uppercase tracking-widest" style={{ fontFamily: "'Barlow Condensed', sans-serif" }}>
                       Created
                     </span>
                     <span style={{ color: FOREGROUND }}>{formatDate(w.createdAt)}</span>
@@ -286,6 +314,17 @@ const reload = useCallback(async () => {
                   >
                     <Pencil size={11} />
                     Edit
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => openStaff(w)}
+                    className="inline-flex items-center gap-1.5 px-3 py-2 text-[10px] font-black uppercase tracking-widest transition-colors duration-200 cursor-pointer"
+                    style={ghostButtonStyle}
+                    onMouseEnter={(e) => { e.currentTarget.style.borderColor = ACCENT; e.currentTarget.style.color = ACCENT }}
+                    onMouseLeave={(e) => { e.currentTarget.style.borderColor = LINE_STRONG; e.currentTarget.style.color = '#8a8580' }}
+                  >
+                    <Users size={11} />
+                    Staff
                   </button>
                   <button
                     type="button"
@@ -406,6 +445,97 @@ const reload = useCallback(async () => {
             {saving ? 'Saving...' : editing ? 'Update Workshop' : 'Create Workshop'}
           </button>
         </div>
+      </Modal>
+
+      <Modal
+        open={!!staffTarget}
+        onClose={() => setStaffTarget(null)}
+        title={`Staff · ${staffTarget?.name || ''}`}
+        maxWidth="max-w-2xl"
+      >
+        {staffLoading ? (
+          <Spinner />
+        ) : !staffData ? (
+          <p className="text-sm" style={{ color: MUTED }}>Could not load staff.</p>
+        ) : (
+          <div className="space-y-5">
+            <div>
+              <div className="flex items-center gap-2 mb-2">
+                <UserCog size={14} style={{ color: ACCENT }} />
+                <h3 className="text-xs font-black uppercase tracking-widest" style={{ fontFamily: "'Barlow Condensed', sans-serif", letterSpacing: '0.12em' }}>
+                  Workshop Managers ({staffData.managers?.length || 0})
+                </h3>
+              </div>
+              {staffData.managers?.length ? (
+                <div className="space-y-2">
+                  {staffData.managers.map((m) => (
+                    <div key={m._id} className="flex items-center justify-between px-3 py-2" style={{ border: `1px solid ${LINE_STRONG}` }}>
+                      <div>
+                        <p className="text-sm font-semibold" style={{ color: FOREGROUND }}>{m.name}</p>
+                        <p className="text-xs" style={{ color: MUTED }}>{m.email} · {m.phone}</p>
+                      </div>
+                      <StatusBadge status={m.status} />
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs" style={{ color: MUTED }}>No manager posted here yet.</p>
+              )}
+            </div>
+
+            <div>
+              <div className="flex items-center gap-2 mb-2">
+                <Headset size={14} style={{ color: ACCENT }} />
+                <h3 className="text-xs font-black uppercase tracking-widest" style={{ fontFamily: "'Barlow Condensed', sans-serif", letterSpacing: '0.12em' }}>
+                  Service Advisors ({staffData.advisors?.length || 0})
+                </h3>
+              </div>
+              {staffData.advisors?.length ? (
+                <div className="space-y-2">
+                  {staffData.advisors.map((a) => (
+                    <div key={a._id} className="flex items-center justify-between px-3 py-2" style={{ border: `1px solid ${LINE_STRONG}` }}>
+                      <div>
+                        <p className="text-sm font-semibold" style={{ color: FOREGROUND }}>{a.name}</p>
+                        <p className="text-xs" style={{ color: MUTED }}>{a.email} · {a.phone}</p>
+                      </div>
+                      <StatusBadge status={a.status} />
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs" style={{ color: MUTED }}>No service advisor posted here yet.</p>
+              )}
+            </div>
+
+            <div>
+              <div className="flex items-center gap-2 mb-2">
+                <Wrench size={14} style={{ color: ACCENT }} />
+                <h3 className="text-xs font-black uppercase tracking-widest" style={{ fontFamily: "'Barlow Condensed', sans-serif", letterSpacing: '0.12em' }}>
+                  Mechanics ({staffData.mechanics?.length || 0})
+                </h3>
+              </div>
+              {staffData.mechanics?.length ? (
+                <div className="space-y-2">
+                  {staffData.mechanics.map((m) => (
+                    <div key={m._id} className="flex items-center justify-between px-3 py-2" style={{ border: `1px solid ${LINE_STRONG}` }}>
+                      <div>
+                        <p className="text-sm font-semibold" style={{ color: FOREGROUND }}>
+                          {m.userId?.name || m.employeeCode}
+                        </p>
+                        <p className="text-xs" style={{ color: MUTED }}>
+                          {m.employeeCode} · {(m.specialization || []).join(', ') || 'General'}
+                        </p>
+                      </div>
+                      <StatusBadge status={m.status} />
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs" style={{ color: MUTED }}>No mechanics linked to this workshop.</p>
+              )}
+            </div>
+          </div>
+        )}
       </Modal>
     </div>
   )

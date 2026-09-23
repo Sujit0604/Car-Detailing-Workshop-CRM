@@ -11,6 +11,7 @@ import {
 } from '../../components/Field'
 import { listWorkshopBookings, updateBookingStatus, updateBookingPaymentStatus } from '../../services/bookingApi'
 import { listWorkshops } from '../../services/masterApi'
+import { useAuth } from '../../contexts/authContext'
 import { BOOKING_NEXT_STATUS, BOOKING_PAYMENT_STATUSES, formatDate } from '../../utils/transitions'
 import {
   ACCENT,
@@ -37,6 +38,7 @@ const BOOKING_FILTERS = [
 ]
 
 export default function WorkshopBookingsPage() {
+  const { user } = useAuth()
   const [workshops, setWorkshops] = useState([])
   const [workshopId, setWorkshopId] = useState('')
   const [bookings, setBookings] = useState([])
@@ -56,13 +58,19 @@ export default function WorkshopBookingsPage() {
         if (cancelled) return
         const list = res.data?.workshops || res.data || []
         setWorkshops(Array.isArray(list) ? list : [])
-        if (Array.isArray(list) && list.length > 0) setWorkshopId((prev) => prev || list[0]._id)
+        if (!Array.isArray(list) || list.length === 0) return
+        const preferred =
+          (typeof user?.workshopId === 'object' && user.workshopId?._id) ||
+          (typeof user?.workshopId === 'string' && user.workshopId) ||
+          ''
+        const matched = preferred && list.some((w) => w._id === preferred)
+        setWorkshopId((prev) => prev || (matched ? preferred : list[0]._id))
       })
       .catch((err) => toast.error(err.message))
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [user?.workshopId])
 
   const load = async () => {
     if (!workshopId) return

@@ -54,6 +54,11 @@ const userSchema = new mongoose.Schema(
       ],
       default: "CUSTOMER",
     },
+    workshopId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Workshop",
+      default: null
+    },
     status: {
         type: String,
         enum: [
@@ -110,6 +115,8 @@ const userSchema = new mongoose.Schema(
     timestamps: true,
   },
 );
+
+userSchema.index({ workshopId: 1 });
 
 // password before save - hash
 userSchema.pre("save", async function () {

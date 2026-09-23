@@ -9,10 +9,10 @@ import Spinner from '../../components/Spinner'
 import Modal from '../../components/Modal'
 import {
   SelectInput,
-  TextInput,
 } from '../../components/Field'
 import { useAuth } from '../../contexts/authContext'
 import { listJobs, listWorkshopJobs, createJob } from '../../services/jobApi'
+import { listWorkshopBookings } from '../../services/bookingApi'
 import { listWorkshops, getWorkshopOverview } from '../../services/masterApi'
 import { formatDate, formatDateTime } from '../../utils/transitions'
 import {
@@ -80,6 +80,8 @@ export default function JobBoardPage() {
   const [jobModal, setJobModal] = useState(false)
   const [bookingId, setBookingId] = useState('')
   const [creating, setCreating] = useState(false)
+  const [bookings, setBookings] = useState([])
+  const [bookingsLoading, setBookingsLoading] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -88,11 +90,17 @@ export default function JobBoardPage() {
         if (cancelled) return
         const list = res.data?.workshops || res.data || []
         setWorkshops(Array.isArray(list) ? list : [])
-        if (Array.isArray(list) && list.length > 0) setWorkshopId((prev) => prev || list[0]._id)
+        if (!Array.isArray(list) || list.length === 0) return
+        const preferred =
+          (typeof user?.workshopId === 'object' && user.workshopId?._id) ||
+          (typeof user?.workshopId === 'string' && user.workshopId) ||
+          ''
+        const matched = preferred && list.some((w) => w._id === preferred)
+        setWorkshopId((prev) => prev || (matched ? preferred : list[0]._id))
       })
       .catch((err) => { if (!cancelled) toast.error(err.message) })
     return () => { cancelled = true }
-  }, [])
+  }, [user?.workshopId])
 
   useEffect(() => {
     if (!workshopId) return
@@ -126,6 +134,40 @@ export default function JobBoardPage() {
       setJobs(res.data?.jobs || [])
     } catch (err) {
       toast.error(err.message)
+    }
+  }
+
+  const openCreateJob = async () => {
+    if (!workshopId) {
+      toast.error('Select a workshop first')
+      return
+    }
+    setBookings([])
+    setBookingId('')
+    setBookingsLoading(true)
+    setJobModal(true)
+    try {
+      const res = await listWorkshopBookings(workshopId, { limit: 100, sortBy: 'createdAt', sortOrder: 'desc' })
+      const allBookings = res.data?.bookings || []
+      const jobBookingIds = new Set(
+        (jobs || [])
+          .map((j) => {
+            if (j.bookingId && typeof j.bookingId === 'object') return j.bookingId._id?.toString()
+            if (j.bookingId) return j.bookingId.toString()
+            return null
+          })
+          .filter(Boolean),
+      )
+      const eligible = allBookings.filter(
+        (b) =>
+          !jobBookingIds.has(b._id?.toString()) &&
+          !['CANCELLED', 'NO_SHOW', 'COMPLETED'].includes(b.status),
+      )
+      setBookings(eligible)
+    } catch (err) {
+      toast.error(err.message)
+    } finally {
+      setBookingsLoading(false)
     }
   }
 
@@ -172,7 +214,7 @@ export default function JobBoardPage() {
           {!isMechanic && (
             <button
               type="button"
-              onClick={() => setJobModal(true)}
+              onClick={openCreateJob}
               className="inline-flex items-center gap-2 px-6 py-3 text-sm font-black uppercase tracking-widest transition-all duration-200 cursor-pointer"
               style={primaryButtonStyle}
               onMouseEnter={(e) => (e.currentTarget.style.background = ACCENT_HOVER)}
@@ -252,7 +294,7 @@ export default function JobBoardPage() {
             action={!isMechanic ? (
               <button
                 type="button"
-                onClick={() => setJobModal(true)}
+                onClick={openCreateJob}
                 className="inline-flex items-center gap-1.5 px-6 py-3 text-xs font-black uppercase tracking-widest transition-all duration-200 cursor-pointer"
                 style={primaryButtonStyle}
               >
@@ -327,15 +369,27 @@ export default function JobBoardPage() {
 
       <Modal open={jobModal} onClose={() => setJobModal(false)} title="Create Job from Booking">
         <form onSubmit={handleCreateJob} className="space-y-4" noValidate>
-          <TextInput
-            label="Booking ID"
+          <SelectInput
+            label="Booking"
             required
+            placeholder={bookingsLoading ? 'Loading bookings…' : 'Select a booking to convert'}
             value={bookingId}
             onChange={(e) => setBookingId(e.target.value)}
-            placeholder="Paste the booking _id"
-          />
+          >
+            {bookingsLoading ? (
+              <option disabled style={{ background: PANEL }}>Loading bookings…</option>
+            ) : bookings.length === 0 ? (
+              <option disabled style={{ background: PANEL }}>No bookings available to convert</option>
+            ) : (
+              bookings.map((b) => (
+                <option key={b._id} value={b._id} style={{ background: PANEL }}>
+                  {b.bookingNumber} · {b.vehicleId ? `${b.vehicleId.make} ${b.vehicleId.model}` : 'Vehicle'} · {formatDate(b.appointment?.date)}
+                </option>
+              ))
+            )}
+          </SelectInput>
           <p className="text-xs" style={{ color: MUTED }}>
-            A job is created for the booking so the workshop can run it through the service
+            A job is created for the selected booking so the workshop can run it through the service
             pipeline (check-in → inspection → estimate → work → delivery).
           </p>
           <div className="flex items-center justify-end gap-3 pt-2">

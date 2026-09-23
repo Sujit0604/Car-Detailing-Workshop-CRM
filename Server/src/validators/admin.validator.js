@@ -14,6 +14,7 @@ const listUsersQuerySchema = z.object({
     limit: z.coerce.number().int().min(1).max(100).default(10),
     role: z.enum(USER_ROLES).optional(),
     status: z.enum(USER_STATUSES).optional(),
+    workshopId: objectIdSchema.optional(),
     search: z.string().trim().optional(),
     sortBy: z.enum(["createdAt", "name", "email"]).default("createdAt"),
     sortOrder: z.enum(["asc", "desc"]).default("desc"),
@@ -44,9 +45,19 @@ const updateUserRoleSchema = z.object({
   }),
 });
 
+const updateUserWorkshopSchema = z.object({
+  params: z.object({
+    id: objectIdSchema,
+  }),
+  body: z.object({
+    workshopId: objectIdSchema.nullable().optional(),
+  }),
+});
+
 module.exports = {
   listUsersQuerySchema,
   userIdParamSchema,
   updateUserStatusSchema,
   updateUserRoleSchema,
+  updateUserWorkshopSchema,
 };

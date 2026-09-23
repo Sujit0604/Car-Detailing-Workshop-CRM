@@ -83,6 +83,7 @@ const listUsersService = async (query) => {
     role,
     status,
     search,
+    workshopId,
     sortBy = "createdAt",
     sortOrder = "desc",
   } = query;
@@ -91,6 +92,7 @@ const listUsersService = async (query) => {
 
   if (role) filter.role = role;
   if (status) filter.status = status;
+  if (workshopId) filter.workshopId = workshopId;
 
   if (search) {
     const regex = new RegExp(search, "i");
@@ -101,6 +103,7 @@ const listUsersService = async (query) => {
 
   const [users, total] = await Promise.all([
     User.find(filter, "-password")
+      .populate("workshopId", "name code")
       .sort(sort)
       .skip((page - 1) * limit)
       .limit(limit),
@@ -167,11 +170,51 @@ const updateUserRoleService = async (userId, role, actorId) => {
 
   user.role = role;
 
+  if (!["WORKSHOP_MANAGER", "SERVICE_ADVISOR"].includes(role)) {
+    user.workshopId = null;
+  }
+
   await user.save();
 
   logger.info(`User ${user._id} role -> ${role} (by ${actorId})`);
 
   return { _id: user._id, name: user.name, role: user.role, status: user.status };
+};
+
+const updateUserWorkshopService = async (userId, workshopId, actorId) => {
+  const user = await User.findById(userId);
+
+  if (!user) {
+    throw new ApiError(404, "User not found");
+  }
+
+  if (!["WORKSHOP_MANAGER", "SERVICE_ADVISOR"].includes(user.role)) {
+    throw new ApiError(400, "Only a workshop manager or service advisor can be posted at a workshop");
+  }
+
+  if (workshopId) {
+    const workshop = await Workshop.findById(workshopId).select("name code");
+
+    if (!workshop) {
+      throw new ApiError(404, "Workshop not found");
+    }
+
+    user.workshopId = workshop._id;
+  } else {
+    user.workshopId = null;
+  }
+
+  await user.save();
+
+  logger.info(`User ${user._id} workshop -> ${user.workshopId || "none"} (by ${actorId})`);
+
+  return {
+    _id: user._id,
+    name: user.name,
+    role: user.role,
+    status: user.status,
+    workshopId: user.workshopId,
+  };
 };
 
 const listAllBookingsService = async (query) => {
@@ -252,6 +295,7 @@ const listAllJobsService = async (query) => {
       .populate("customerId", "name phone")
       .populate("vehicleId", "registrationNumber make model")
       .populate("workshopId", "name code")
+      .populate("assignedMechanicId", "employeeCode specialization userId")
       .sort(sort)
       .skip((page - 1) * limit)
       .limit(limit),
@@ -274,6 +318,7 @@ module.exports = {
   listUsersService,
   updateUserStatusService,
   updateUserRoleService,
+  updateUserWorkshopService,
   listAllBookingsService,
   listAllJobsService,
 };

@@ -28,7 +28,7 @@ const router = createBrowserRouter(
         <Route path="/vehicles" element={<ProtectedRoute><RoleRoute roles={['CUSTOMER']}><Vehicles /></RoleRoute></ProtectedRoute>}/>
         <Route path="/book-service" element={<ProtectedRoute><RoleRoute roles={['CUSTOMER']}><BookService /></RoleRoute></ProtectedRoute>}/>
         <Route path="/bookings" element={<ProtectedRoute><RoleRoute roles={['CUSTOMER']}><Bookings /></RoleRoute></ProtectedRoute>}/>
-        <Route path="/jobs/:jobId" element={<ProtectedRoute><JobDetail /></ProtectedRoute>}/>
+        <Route path="/jobs/:jobId" element={<ProtectedRoute><RoleRoute roles={['CUSTOMER']}><JobDetail /></RoleRoute></ProtectedRoute>}/>
         
         <Route path="/workshop/jobs" element={<ProtectedRoute><StaffRoute><JobBoard /></StaffRoute></ProtectedRoute>}/>
         <Route path="/workshop/jobs/:jobId" element={<ProtectedRoute><StaffRoute><JobDetail /></StaffRoute></ProtectedRoute>}/>

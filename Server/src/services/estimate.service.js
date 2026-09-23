@@ -3,6 +3,7 @@ const ApiError = require("../utils/ApiError.js");
 const logger = require("../utils/logger.js");
 const Estimate = require("../models/Estimate.js");
 const Job = require("../models/Job.js");
+const Booking = require("../models/Booking.js");
 const { JOB_STATUS_TRANSITIONS } = require("./job.service.js");
 
 const generateEstimateNumber = () => {
@@ -98,7 +99,7 @@ const getLatestEstimateService = async (jobId, user) => {
 };
 
 const respondToEstimateService = async (jobId, payload, user) => {
-  const { action, remarks } = payload;
+  const { action, remarks, cancelBooking = false } = payload;
 
   const job = await Job.findById(jobId);
 
@@ -133,6 +134,23 @@ const respondToEstimateService = async (jobId, payload, user) => {
 
   if (action === "APPROVED") {
     moveJobTo(job, "APPROVED");
+  } else if (cancelBooking) {
+    moveJobTo(job, "CANCELLED");
+
+    const reason = remarks?.trim() || `Booking cancelled by customer after rejecting estimate ${estimate.estimateNumber}`;
+    job.internalNotes = reason;
+
+    await Booking.updateOne(
+      { _id: job.bookingId },
+      {
+        status: "CANCELLED",
+        cancellation: {
+          cancelledBy: user._id,
+          reason,
+          cancelledAt: new Date(),
+        },
+      },
+    );
   } else {
     moveJobTo(job, "ESTIMATE_PENDING");
   }
