@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import {
   LayoutGrid,
@@ -9,6 +10,7 @@ import {
   Package,
   LogOut,
 } from 'lucide-react'
+import Modal from './Modal'
 import { useAuth } from '../contexts/authContext.js'
 import { getHomePath } from '../utils/routes'
 import {
@@ -51,10 +53,16 @@ const ROLE_LINKS = {
 export default function AppNav() {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
+  const [logoutOpen, setLogoutOpen] = useState(false)
   const role = user?.role
 
   const links = ROLE_LINKS[role] || CUSTOMER_LINKS
   const homePath = getHomePath(role)
+
+  const handleLogout = () => {
+    logout()
+    navigate('/')
+  }
 
   return (
     <header
@@ -111,10 +119,7 @@ export default function AppNav() {
           </span>
           <button
             type="button"
-            onClick={() => {
-              logout()
-              navigate('/')
-            }}
+            onClick={() => setLogoutOpen(true)}
             className="inline-flex items-center gap-2 px-4 py-2 text-xs font-black uppercase tracking-widest transition-all duration-200 cursor-pointer"
             style={{
               color: MUTED,
@@ -160,6 +165,44 @@ export default function AppNav() {
           </NavLink>
         ))}
       </nav>
+
+      <Modal open={logoutOpen} onClose={() => setLogoutOpen(false)} title="Logout">
+        <p className="text-sm" style={{ color: MUTED }}>
+          Are you sure you want to logout of your KROM DETAIL account?
+        </p>
+        <div className="flex items-center justify-end gap-3 mt-5">
+          <button
+            type="button"
+            onClick={() => setLogoutOpen(false)}
+            className="px-5 py-3 text-xs font-black uppercase tracking-widest transition-colors duration-200 cursor-pointer"
+            style={{
+              color: MUTED,
+              border: `1px solid ${LINE_STRONG}`,
+              background: 'transparent',
+              fontFamily: "'Barlow Condensed', sans-serif",
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.borderColor = ACCENT; e.currentTarget.style.color = ACCENT }}
+            onMouseLeave={(e) => { e.currentTarget.style.borderColor = LINE_STRONG; e.currentTarget.style.color = MUTED }}
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={handleLogout}
+            className="px-6 py-3 text-xs font-black uppercase tracking-widest transition-all duration-200 cursor-pointer"
+            style={{
+              background: ACCENT,
+              color: '#fff',
+              border: 'none',
+              fontFamily: "'Barlow Condensed', sans-serif",
+            }}
+            onMouseEnter={(e) => (e.currentTarget.style.background = ACCENT_HOVER)}
+            onMouseLeave={(e) => (e.currentTarget.style.background = ACCENT)}
+          >
+            Yes, Logout
+          </button>
+        </div>
+      </Modal>
     </header>
   )
 }
