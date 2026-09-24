@@ -313,11 +313,20 @@ export default function Jobs() {
                       {j.workshopId?.name || '—'}
                     </td>
                     <td className="px-5 py-3.5 text-sm" style={{ color: FOREGROUND }}>
-                      {j.assignedMechanicId
-                        ? j.assignedMechanicId.userId
-                          ? (j.assignedMechanicId.userId.name || j.assignedMechanicId.employeeCode)
-                          : (j.assignedMechanicId.employeeCode || 'Mechanic')
-                        : <span style={{ color: MUTED }}>Unassigned</span>}
+                      {j.assignedMechanicId ? (
+                        (() => {
+                          const code = j.assignedMechanicId.employeeCode || 'Mechanic'
+                          const name = j.assignedMechanicId.userId?.name
+                          return name ? (
+                            <span className="whitespace-nowrap">
+                              <span style={{ color: FOREGROUND }}>{code}</span>
+                              <span className="ml-1" style={{ color: MUTED }}>({name})</span>
+                            </span>
+                          ) : code
+                        })()
+                      ) : (
+                        <span style={{ color: MUTED }}>Unassigned</span>
+                      )}
                     </td>
                     <td className="px-5 py-3.5 text-sm whitespace-nowrap" style={{ color: MUTED }}>
                       {formatDate(j.createdAt)}

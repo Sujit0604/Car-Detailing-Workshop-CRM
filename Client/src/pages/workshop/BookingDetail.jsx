@@ -188,6 +188,27 @@ export default function WorkshopBookingDetailPage() {
               <InfoRow icon={Truck} label="Vehicle" value={booking.vehicleId ? `${booking.vehicleId.make} ${booking.vehicleId.model}` : null} />
               <InfoRow icon={Truck} label="Registration" value={booking.vehicleId?.registrationNumber} />
               <InfoRow icon={Truck} label="Colour" value={booking.vehicleId?.color} />
+              {(booking.vehicleId?.images || []).length > 0 && (
+                <div className="py-2.5" style={{ borderBottom: `1px solid ${LINE_STRONG}` }}>
+                  <p
+                    className="text-xs uppercase tracking-widest mb-2"
+                    style={{ color: MUTED, fontFamily: "'Barlow Condensed', sans-serif" }}
+                  >
+                    Vehicle Photos ({booking.vehicleId.images.length})
+                  </p>
+                  <div className="flex gap-2 overflow-x-auto pb-1" style={{ scrollbarWidth: 'thin' }}>
+                    {booking.vehicleId.images.map((img) => (
+                      <img
+                        key={img.publicId || img.url}
+                        src={img.url}
+                        alt="Vehicle"
+                        className="w-28 h-20 object-cover shrink-0"
+                        style={{ border: `1px solid ${LINE_STRONG}` }}
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
               <InfoRow icon={ClipboardList} label="Workshop" value={booking.workshopId?.name} />
               <InfoRow icon={ClipboardList} label="Workshop Code" value={booking.workshopId?.code} />
               <InfoRow icon={ClipboardList} label="Workshop Address" value={formatAddress(booking.workshopId?.address)} />

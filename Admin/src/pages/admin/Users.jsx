@@ -26,7 +26,7 @@ import {
 
 const ROLE_FILTERS = ['ALL', ...USER_ROLES]
 const STATUS_FILTERS = ['ALL', ...USER_STATUSES]
-const WORKSHOP_STAFF_ROLES = ['WORKSHOP_MANAGER', 'SERVICE_ADVISOR']
+const WORKSHOP_ROLES = ['WORKSHOP_MANAGER', 'SERVICE_ADVISOR', 'MECHANIC']
 const STAFF_ROLES = ['WORKSHOP_MANAGER', 'SERVICE_ADVISOR', 'MECHANIC']
 const GENDER_OPTIONS = [
   { value: 'male', label: 'Male' },
@@ -391,7 +391,7 @@ export default function Users() {
                       <StatusBadge status={u.role} />
                     </td>
                     <td className="px-5 py-3.5 text-sm" style={{ color: MUTED }}>
-                      {WORKSHOP_STAFF_ROLES.includes(u.role) ? (
+                      {WORKSHOP_ROLES.includes(u.role) ? (
                         u.workshopId?.name
                           ? <span style={{ color: FOREGROUND }}>{u.workshopId.name}<span className="text-xs" style={{ color: MUTED }}> · {u.workshopId.code}</span></span>
                           : '—'
@@ -427,7 +427,7 @@ export default function Users() {
                         >
                           Role
                         </button>
-                        {WORKSHOP_STAFF_ROLES.includes(u.role) && (
+                        {WORKSHOP_ROLES.includes(u.role) && (
                           <button
                             type="button"
                             onClick={() => openWorkshop(u)}
@@ -644,14 +644,19 @@ export default function Users() {
               onChange={updateStaffField('phone')}
               placeholder="9876500000"
             />
-            <TextInput
-              label="Password"
-              type="password"
-              required
-              value={staffForm.password}
-              onChange={updateStaffField('password')}
-              placeholder="Min 8 chars with a symbol"
-            />
+            <div>
+              <TextInput
+                label="Password"
+                type="password"
+                required
+                value={staffForm.password}
+                onChange={updateStaffField('password')}
+                placeholder="Min 8 chars with a symbol"
+              />
+              <p className="text-xs mt-1.5" style={{ color: MUTED }}>
+                At least 8 chars · 1 uppercase · 1 lowercase · 1 number · 1 symbol
+              </p>
+            </div>
             <SelectInput
               label="Gender"
               value={staffForm.gender}

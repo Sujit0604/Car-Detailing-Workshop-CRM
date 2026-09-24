@@ -214,7 +214,7 @@ const createBookingService = async (userId, bookingData) => {
 const getBookingByIdService = async (bookingId, user) => {
   const booking = await Booking.findById(bookingId)
     .populate("customerId", "name email phone")
-    .populate("vehicleId", "registrationNumber make model color")
+    .populate("vehicleId", "registrationNumber make model color images")
     .populate("workshopId", "name code address")
     .populate("services.serviceId", "name slug")
     .populate("couponId", "code description discountType discountValue maximumDiscount minimumOrderValue")

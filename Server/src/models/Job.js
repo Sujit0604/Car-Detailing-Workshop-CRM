@@ -40,6 +40,11 @@ const jobSchema = new mongoose.Schema(
       ref: "User",
       default: null,
     },
+    workshopManagerId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
     status: {
       type: String,
       enum: [

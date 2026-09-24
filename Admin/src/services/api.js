@@ -114,8 +114,16 @@ api.interceptors.response.use(
       return Promise.reject(new Error('Session expired'))
     }
 
+    const data = err.response?.data
+    const validationDetail =
+      Array.isArray(data?.errors) && data.errors.length > 0
+        ? typeof data.errors[0] === 'string'
+          ? data.errors[0]
+          : data.errors[0]?.message
+        : null
     const message =
-      err.response?.data?.message ||
+      validationDetail ||
+      data?.message ||
       err.message ||
       'Something went wrong'
     return Promise.reject(new Error(message))

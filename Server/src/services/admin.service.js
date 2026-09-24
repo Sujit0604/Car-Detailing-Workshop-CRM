@@ -6,6 +6,9 @@ const Service = require("../models/Service.js");
 const ServiceCategory = require("../models/ServiceCategory.js");
 const Booking = require("../models/Booking.js");
 const Job = require("../models/Job.js");
+const Mechanic = require("../models/Mechanic.js");
+
+const WORKSHOP_ROLES = ["WORKSHOP_MANAGER", "SERVICE_ADVISOR", "MECHANIC"];
 
 const USER_ROLES = ["CUSTOMER", "ADMIN", "WORKSHOP_MANAGER", "SERVICE_ADVISOR", "MECHANIC"];
 const STAFF_ROLES = ["WORKSHOP_MANAGER", "SERVICE_ADVISOR", "MECHANIC"];
@@ -107,9 +110,31 @@ const listUsersService = async (query) => {
       .populate("workshopId", "name code")
       .sort(sort)
       .skip((page - 1) * limit)
-      .limit(limit),
+      .limit(limit)
+      .lean(),
     User.countDocuments(filter),
   ]);
+
+  const mechanicUserIds = users
+    .filter((u) => u.role === "MECHANIC" && !u.workshopId)
+    .map((u) => u._id);
+
+  if (mechanicUserIds.length > 0) {
+    const mechanicProfiles = await Mechanic.find({ userId: { $in: mechanicUserIds } })
+      .populate("workshopId", "name code")
+      .lean();
+
+    const mechanicByUser = new Map(
+      mechanicProfiles.map((m) => [m.userId.toString(), m]),
+    );
+
+    users.forEach((u) => {
+      if (u.role === "MECHANIC" && !u.workshopId) {
+        const profile = mechanicByUser.get(u._id.toString());
+        if (profile?.workshopId) u.workshopId = profile.workshopId;
+      }
+    });
+  }
 
   return {
     users,
@@ -171,7 +196,7 @@ const updateUserRoleService = async (userId, role, actorId) => {
 
   user.role = role;
 
-  if (!["WORKSHOP_MANAGER", "SERVICE_ADVISOR"].includes(role)) {
+  if (!WORKSHOP_ROLES.includes(role)) {
     user.workshopId = null;
   }
 
@@ -189,8 +214,8 @@ const updateUserWorkshopService = async (userId, workshopId, actorId) => {
     throw new ApiError(404, "User not found");
   }
 
-  if (!["WORKSHOP_MANAGER", "SERVICE_ADVISOR"].includes(user.role)) {
-    throw new ApiError(400, "Only a workshop manager or service advisor can be posted at a workshop");
+  if (!WORKSHOP_ROLES.includes(user.role)) {
+    throw new ApiError(400, "Only workshop staff can be posted at a workshop");
   }
 
   if (workshopId) {
@@ -206,6 +231,10 @@ const updateUserWorkshopService = async (userId, workshopId, actorId) => {
   }
 
   await user.save();
+
+  if (user.role === "MECHANIC") {
+    await Mechanic.updateOne({ userId: user._id }, { workshopId: user.workshopId || null });
+  }
 
   logger.info(`User ${user._id} workshop -> ${user.workshopId || "none"} (by ${actorId})`);
 
@@ -359,7 +388,11 @@ const listAllJobsService = async (query) => {
       .populate("customerId", "name phone")
       .populate("vehicleId", "registrationNumber make model")
       .populate("workshopId", "name code")
-      .populate("assignedMechanicId", "employeeCode specialization userId")
+      .populate({
+        path: "assignedMechanicId",
+        select: "employeeCode specialization userId",
+        populate: { path: "userId", select: "name email phone role" },
+      })
       .sort(sort)
       .skip((page - 1) * limit)
       .limit(limit),

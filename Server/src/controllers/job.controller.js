@@ -12,7 +12,7 @@ const {
 const createJobFromBooking = asyncHandler(async (req, res) => {
   const { bookingId, serviceAdvisorId } = req.body;
 
-  const job = await createJobFromBookingService(bookingId, serviceAdvisorId);
+  const job = await createJobFromBookingService(bookingId, serviceAdvisorId, req.user);
 
   return sendResponse(res, 201, "Job created successfully", job);
 });

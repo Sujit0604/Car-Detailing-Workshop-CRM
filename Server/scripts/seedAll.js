@@ -93,10 +93,10 @@ const USERS = [
   { name: "Meera Iyer", email: "meera@kromdetail.com", password: "Staff@123", gender: "female", phone: "9871000002", role: "WORKSHOP_MANAGER", workshopCode: "SPEED-02" },
   { name: "Rohan Mehta", email: "rohan@kromdetail.com", password: "Staff@123", gender: "male", phone: "9871000003", role: "SERVICE_ADVISOR", workshopCode: "SHAIN-01" },
   { name: "Divya Rao", email: "divya@kromdetail.com", password: "Staff@123", gender: "female", phone: "9871000004", role: "SERVICE_ADVISOR", workshopCode: "SPEED-02" },
-  { name: "Karan Singh", email: "karan@kromdetail.com", password: "Staff@123", gender: "male", phone: "9871000005", role: "MECHANIC" },
-  { name: "Vikram Yadav", email: "vikram@kromdetail.com", password: "Staff@123", gender: "male", phone: "9871000006", role: "MECHANIC" },
-  { name: "Anil Kumar", email: "anil@kromdetail.com", password: "Staff@123", gender: "male", phone: "9871000007", role: "MECHANIC" },
-  { name: "Suresh Patel", email: "suresh@kromdetail.com", password: "Staff@123", gender: "male", phone: "9871000008", role: "MECHANIC" },
+  { name: "Karan Singh", email: "karan@kromdetail.com", password: "Staff@123", gender: "male", phone: "9871000005", role: "MECHANIC", workshopCode: "SHAIN-01" },
+  { name: "Vikram Yadav", email: "vikram@kromdetail.com", password: "Staff@123", gender: "male", phone: "9871000006", role: "MECHANIC", workshopCode: "SHAIN-01" },
+  { name: "Anil Kumar", email: "anil@kromdetail.com", password: "Staff@123", gender: "male", phone: "9871000007", role: "MECHANIC", workshopCode: "SPEED-02" },
+  { name: "Suresh Patel", email: "suresh@kromdetail.com", password: "Staff@123", gender: "male", phone: "9871000008", role: "MECHANIC", workshopCode: "SPEED-02" },
   { name: "Priya Sharma", email: "priya@example.com", password: "Customer@123", gender: "female", phone: "9872000001", role: "CUSTOMER" },
   { name: "Arjun Nair", email: "arjun@example.com", password: "Customer@123", gender: "male", phone: "9872000002", role: "CUSTOMER" },
   { name: "Sweety Das", email: "sweety@example.com", password: "Customer@123", gender: "female", phone: "9872000003", role: "CUSTOMER" },
@@ -159,13 +159,13 @@ const BOOKINGS = [
 ];
 
 const JOBS = [
-  { num: 1, booking: 1, status: "COMPLETED", mechanic: "MECH-SHAIN-01", advisor: "rohan@kromdetail.com", odometerIn: 17850, odometerOut: 18400 },
-  { num: 2, booking: 2, status: "CHECK_IN", advisor: "rohan@kromdetail.com" },
-  { num: 3, booking: 3, status: "INSPECTION", advisor: "rohan@kromdetail.com", mechanic: "MECH-SHAIN-01" },
-  { num: 4, booking: 4, status: "IN_PROGRESS", mechanic: "MECH-SPEED-01", advisor: "divya@kromdetail.com", odometerIn: 9410 },
-  { num: 5, booking: 5, status: "CUSTOMER_APPROVAL", advisor: "divya@kromdetail.com" },
-  { num: 6, booking: 6, status: "ESTIMATE_PENDING", advisor: "divya@kromdetail.com" },
-  { num: 7, booking: 7, status: "QUALITY_CHECK", mechanic: "MECH-SHAIN-02", advisor: "rohan@kromdetail.com", odometerIn: 18390 },
+  { num: 1, booking: 1, status: "COMPLETED", mechanic: "MECH-SHAIN-01", advisor: "rohan@kromdetail.com", manager: "aarav@kromdetail.com", odometerIn: 17850, odometerOut: 18400 },
+  { num: 2, booking: 2, status: "CHECK_IN", advisor: "rohan@kromdetail.com", manager: "aarav@kromdetail.com" },
+  { num: 3, booking: 3, status: "INSPECTION", advisor: "rohan@kromdetail.com", mechanic: "MECH-SHAIN-01", manager: "aarav@kromdetail.com" },
+  { num: 4, booking: 4, status: "IN_PROGRESS", mechanic: "MECH-SPEED-01", advisor: "divya@kromdetail.com", manager: "meera@kromdetail.com", odometerIn: 9410 },
+  { num: 5, booking: 5, status: "CUSTOMER_APPROVAL", advisor: "divya@kromdetail.com", manager: "meera@kromdetail.com" },
+  { num: 6, booking: 6, status: "ESTIMATE_PENDING", advisor: "divya@kromdetail.com", manager: "meera@kromdetail.com" },
+  { num: 7, booking: 7, status: "QUALITY_CHECK", mechanic: "MECH-SHAIN-02", advisor: "rohan@kromdetail.com", manager: "aarav@kromdetail.com", odometerIn: 18390 },
 ];
 
 const ESTIMATES = [
@@ -399,6 +399,7 @@ const seed = async () => {
         workshopId: booking.workshopId,
         status: j.status,
         serviceAdvisorId: userMap.get(j.advisor)?._id || null,
+        workshopManagerId: userMap.get(j.manager)?._id || null,
         internalNotes: "Seeded demo job for workshop flow.",
       };
       if (mechanic) jobData.assignedMechanicId = mechanic._id;

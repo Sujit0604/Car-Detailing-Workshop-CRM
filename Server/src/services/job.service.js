@@ -4,6 +4,7 @@ const ApiError = require("../utils/ApiError.js");
 const logger = require("../utils/logger.js");
 const Job = require("../models/Job.js");
 const Booking = require("../models/Booking.js");
+const User = require("../models/User.js");
 const Mechanic = require("../models/Mechanic.js");
 
 const generateJobNumber = () => {
@@ -97,7 +98,21 @@ const findBookingByIdentifier = async (identifier) => {
     .populate("services.serviceId", "durationMinutes");
 };
 
-const createJobFromBookingService = async (bookingId, serviceAdvisorId = null) => {
+const resolveJobWorkshopManager = async (actor, booking) => {
+  if (actor && actor.role === "WORKSHOP_MANAGER" && actor.workshopId) {
+    return actor._id;
+  }
+
+  const manager = await User.findOne({
+    role: "WORKSHOP_MANAGER",
+    status: "ACTIVE",
+    workshopId: booking.workshopId,
+  }).select("_id");
+
+  return manager ? manager._id : null;
+};
+
+const createJobFromBookingService = async (bookingId, serviceAdvisorId, actor = null) => {
   const booking = await findBookingByIdentifier(bookingId);
 
   if (!booking) {
@@ -115,13 +130,22 @@ const createJobFromBookingService = async (bookingId, serviceAdvisorId = null) =
     0,
   );
 
+  const advisorId =
+    serviceAdvisorId ||
+    (actor && ["SERVICE_ADVISOR", "WORKSHOP_MANAGER", "ADMIN"].includes(actor.role)
+      ? actor._id
+      : null);
+
+  const workshopManagerId = await resolveJobWorkshopManager(actor, booking);
+
   const job = await Job.create({
     jobNumber: generateJobNumber(),
     bookingId: booking._id,
     customerId: booking.customerId,
     vehicleId: booking.vehicleId,
     workshopId: booking.workshopId,
-    serviceAdvisorId: serviceAdvisorId || booking.customerId,
+    serviceAdvisorId: advisorId,
+    workshopManagerId,
     status: "CREATED",
     customerNotes: booking.customerNotes,
     expectedCompletionAt: new Date(
@@ -140,8 +164,13 @@ const getJobByIdService = async (jobId, user) => {
     .populate("customerId", "name email phone")
     .populate("vehicleId", "registrationNumber make model color images")
     .populate("workshopId", "name code")
-    .populate("assignedMechanicId", "employeeCode specialization experienceYears userId")
-    .populate("serviceAdvisorId", "name email");
+    .populate({
+      path: "assignedMechanicId",
+      select: "employeeCode specialization experienceYears userId",
+      populate: { path: "userId", select: "name email phone role" },
+    })
+    .populate("serviceAdvisorId", "name email phone role")
+    .populate("workshopManagerId", "name email phone role");
 
   if (!job) {
     throw new ApiError(404, "Job not found");
@@ -159,7 +188,29 @@ const getJobByIdService = async (jobId, user) => {
     }
   }
 
-  return job;
+  const result = job.toObject();
+
+  if (result.serviceAdvisorId && result.serviceAdvisorId.role === "CUSTOMER") {
+    const workshopSA = await User.findOne({
+      role: "SERVICE_ADVISOR",
+      status: "ACTIVE",
+      workshopId: result.workshopId?._id || job.workshopId,
+    }).select("name email phone");
+
+    if (workshopSA) result.serviceAdvisorId = workshopSA;
+  }
+
+  if (!result.workshopManagerId) {
+    const workshopManager = await User.findOne({
+      role: "WORKSHOP_MANAGER",
+      status: "ACTIVE",
+      workshopId: result.workshopId?._id || job.workshopId,
+    }).select("name email phone");
+
+    if (workshopManager) result.workshopManagerId = workshopManager;
+  }
+
+  return result;
 };
 
 const listJobsService = async (user, query, workshopId) => {
@@ -212,7 +263,11 @@ const listJobsService = async (user, query, workshopId) => {
     Job.find(filter)
       .populate("bookingId", "bookingNumber")
       .populate("vehicleId", "registrationNumber make model")
-      .populate("assignedMechanicId", "employeeCode userId")
+      .populate({
+        path: "assignedMechanicId",
+        select: "employeeCode userId",
+        populate: { path: "userId", select: "name" },
+      })
       .sort(sort)
       .skip((page - 1) * limit)
       .limit(limit),

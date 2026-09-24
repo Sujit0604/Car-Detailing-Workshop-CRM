@@ -616,10 +616,12 @@ export default function JobDetailPage() {
             </h2>
             <InfoRow icon={User} label="Customer" value={job.customerId?.name} />
             <InfoRow icon={ClipboardList} label="Booking" value={job.bookingId?.bookingNumber} />
+            <InfoRow icon={ClipboardList} label="Workshop" value={job.workshopId?.name} />
             <InfoRow icon={User} label="Service Advisor" value={job.serviceAdvisorId?.name} />
+            <InfoRow icon={User} label="Workshop Manager" value={job.workshopManagerId?.name} />
+            <InfoRow icon={User} label="Assigned Mechanic" value={job.assignedMechanicId ? (job.assignedMechanicId.userId?.name ? `${job.assignedMechanicId.employeeCode} (${job.assignedMechanicId.userId.name})` : (job.assignedMechanicId.employeeCode || 'Mechanic')) : 'Unassigned'} />
             <InfoRow icon={Gauge} label="Odometer In" value={job.odometerIn ? `${job.odometerIn.toLocaleString()} km` : null} />
             <InfoRow icon={Gauge} label="Odometer Out" value={job.odometerOut ? `${job.odometerOut.toLocaleString()} km` : null} />
-            <InfoRow icon={User} label="Assigned Mechanic" value={job.assignedMechanicId ? (job.assignedMechanicId.userId?.name || job.assignedMechanicId.employeeCode) : 'Unassigned'} />
             <InfoRow icon={Truck} label="Check-In" value={formatDateTime(job.checkInAt)} />
             <InfoRow icon={Gauge} label="Started" value={formatDateTime(job.startedAt)} />
             <InfoRow icon={ClipboardCheck} label="Completed" value={formatDateTime(job.completedAt)} />
