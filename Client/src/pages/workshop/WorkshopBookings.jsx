@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
-import { Wrench, Wallet } from 'lucide-react'
+import { Wrench, Wallet, Eye } from 'lucide-react'
 import AppNav from '../../components/AppNav'
 import StatusBadge from '../../components/StatusBadge'
 import EmptyState from '../../components/EmptyState'
@@ -39,6 +40,7 @@ const BOOKING_FILTERS = [
 
 export default function WorkshopBookingsPage() {
   const { user } = useAuth()
+  const navigate = useNavigate()
   const [workshops, setWorkshops] = useState([])
   const [workshopId, setWorkshopId] = useState('')
   const [bookings, setBookings] = useState([])
@@ -249,6 +251,17 @@ export default function WorkshopBookingsPage() {
                     </td>
                     <td className="px-5 py-3.5">
                       <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => navigate(`/workshop/bookings/${b._id}`)}
+                          className="inline-flex items-center gap-1 px-3 py-1.5 text-[10px] font-black uppercase tracking-widest transition-colors duration-200 cursor-pointer"
+                          style={ghostButtonStyle}
+                          onMouseEnter={(e) => { e.currentTarget.style.borderColor = ACCENT; e.currentTarget.style.color = ACCENT }}
+                          onMouseLeave={(e) => { e.currentTarget.style.borderColor = LINE_STRONG; e.currentTarget.style.color = '#8a8580' }}
+                        >
+                          <Eye size={11} />
+                          View
+                        </button>
                         <button
                           type="button"
                           onClick={() => openStatus(b)}

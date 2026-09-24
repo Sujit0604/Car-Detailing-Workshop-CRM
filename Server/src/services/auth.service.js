@@ -30,8 +30,10 @@ const registerService = async (name, email, password, gender, phone, role) => {
     }).select("-password");
 
     if (existingUser) {
-        new ApiError(400, "User already exist!");
+        throw new ApiError(400, "User already exists!");
     }
+
+    role = "CUSTOMER";
 
     const threeDayExpires = new Date(
       Date.now() + 3 * 24 * 60 * 60 * 1000,

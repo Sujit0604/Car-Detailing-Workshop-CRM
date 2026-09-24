@@ -46,9 +46,6 @@ const registerSchema = z
         (value) => /^\+?[0-9]{10,15}$/.test(value),
         'Enter a valid 10-15 digit phone number',
       ),
-    role: z.enum(['CUSTOMER', 'WORKSHOP_MANAGER', 'SERVICE_ADVISOR', 'MECHANIC'], {
-      required_error: 'Please select a role',
-    }),
   })
   .refine((data) => data.password === data.confirmPassword, {
     message: 'Passwords do not match',
@@ -59,13 +56,6 @@ const GENDER_OPTIONS = [
   { value: 'male', label: 'Male' },
   { value: 'female', label: 'Female' },
   { value: 'other', label: 'Other' },
-]
-
-const ROLE_OPTIONS = [
-  { value: 'CUSTOMER', label: 'Customer' },
-  { value: 'WORKSHOP_MANAGER', label: 'Workshop Manager' },
-  { value: 'SERVICE_ADVISOR', label: 'Service Advisor' },
-  { value: 'MECHANIC', label: 'Mechanic' },
 ]
 
 const selectStyle = {
@@ -95,14 +85,13 @@ const Register = ({ onSwitchMode }) => {
       confirmPassword: '',
       gender: '',
       phone: '',
-      role: '',
     },
   })
 
   const onSubmit = async ({ confirmPassword, ...data }) => {
     setLoading(true)
     try {
-      const res = await registerUser(data)
+      const res = await registerUser({ ...data, role: 'CUSTOMER' })
       toast.success(res.message || 'Account created! Please login.')
       onSwitchMode?.('login', { email: data.email })
     } catch (err) {
@@ -204,31 +193,6 @@ const Register = ({ onSwitchMode }) => {
           error={errors.phone?.message}
           {...register('phone')}
         />
-
-        <div>
-          <label className="block text-xs uppercase tracking-widest mb-1.5" style={labelStyle}>
-            Role<span style={{ color: ACCENT }}> *</span>
-          </label>
-          <select
-            {...register('role')}
-            className="w-full px-4 py-3 text-sm outline-none transition-colors duration-200 appearance-none cursor-pointer"
-            style={selectStyle}
-            onFocus={(e) => { e.currentTarget.style.borderColor = ACCENT }}
-            onBlur={(e) => { e.currentTarget.style.borderColor = LINE_STRONG }}
-          >
-            <option value="">Select role</option>
-            {ROLE_OPTIONS.map((opt) => (
-              <option key={opt.value} value={opt.value}>
-                {opt.label}
-              </option>
-            ))}
-          </select>
-          {errors.role?.message && (
-            <p className="mt-1.5 text-xs font-medium" style={{ color: ACCENT }}>
-              {errors.role.message}
-            </p>
-          )}
-        </div>
 
         <button
           type="submit"

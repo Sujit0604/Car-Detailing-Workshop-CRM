@@ -8,6 +8,7 @@ const Booking = require("../models/Booking.js");
 const Job = require("../models/Job.js");
 
 const USER_ROLES = ["CUSTOMER", "ADMIN", "WORKSHOP_MANAGER", "SERVICE_ADVISOR", "MECHANIC"];
+const STAFF_ROLES = ["WORKSHOP_MANAGER", "SERVICE_ADVISOR", "MECHANIC"];
 const USER_STATUSES = ["ACTIVE", "INACTIVE", "BLOCKED", "PENDING_VERIFICATION"];
 
 const getStatsService = async () => {
@@ -23,7 +24,6 @@ const getStatsService = async () => {
     activeJobs,
     revenueResult,
     bookingStatusCounts,
-    recentBookings,
   ] = await Promise.all([
     User.countDocuments(),
     User.countDocuments({ role: "CUSTOMER" }),
@@ -41,18 +41,19 @@ const getStatsService = async () => {
     Booking.aggregate([
       { $group: { _id: "$status", count: { $sum: 1 } } },
     ]),
-    Booking.find()
+  ]);
+
+    const statusBreakdown = Object.fromEntries(
+      bookingStatusCounts.map((item) => [item._id, item.count]),
+    );
+
+    const recentBookings = await Booking.find()
       .populate("vehicleId", "registrationNumber make model")
       .populate("workshopId", "name code")
       .sort({ createdAt: -1 })
-      .limit(6),
-  ]);
+      .limit(6);
 
-  const statusBreakdown = Object.fromEntries(
-    bookingStatusCounts.map((item) => [item._id, item.count]),
-  );
-
-  logger.info("Admin dashboard stats fetched");
+    logger.info("Admin dashboard stats fetched");
 
   return {
     users: {
@@ -265,6 +266,69 @@ const listAllBookingsService = async (query) => {
   };
 };
 
+const createStaffUserService = async (data, actorId) => {
+  const {
+    name,
+    email,
+    password,
+    gender,
+    phone,
+    role,
+    workshopId,
+  } = data;
+
+  if (!STAFF_ROLES.includes(role)) {
+    throw new ApiError(400, "Only staff roles can be created by an admin");
+  }
+
+  const existingUser = await User.findOne({
+    $or: [{ email }, { phone }],
+  }).select("_id");
+
+  if (existingUser) {
+    throw new ApiError(400, "User with this email or phone already exists");
+  }
+
+  if (workshopId) {
+    const workshop = await Workshop.findById(workshopId).select("_id");
+
+    if (!workshop) {
+      throw new ApiError(404, "Workshop not found");
+    }
+  }
+
+  const threeDayExpires = new Date(
+    Date.now() + 3 * 24 * 60 * 60 * 1000,
+  ).toISOString();
+
+  const user = await User.create({
+    name,
+    email,
+    password,
+    gender,
+    phone,
+    role,
+    workshopId: workshopId || null,
+    status: "ACTIVE",
+    emailVerified: true,
+    needsVerification: false,
+    threeDayExpires,
+  });
+
+  logger.info(`Staff user created: ${user.email} (${role}) by ${actorId}`);
+
+  return {
+    _id: user._id,
+    name: user.name,
+    email: user.email,
+    phone: user.phone,
+    gender: user.gender,
+    role: user.role,
+    status: user.status,
+    workshopId: workshopId || null,
+  };
+};
+
 const listAllJobsService = async (query) => {
   const {
     page = 1,
@@ -319,6 +383,7 @@ module.exports = {
   updateUserStatusService,
   updateUserRoleService,
   updateUserWorkshopService,
+  createStaffUserService,
   listAllBookingsService,
   listAllJobsService,
 };

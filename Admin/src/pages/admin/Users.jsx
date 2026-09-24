@@ -1,13 +1,13 @@
 import { useEffect, useState } from 'react'
 import toast from 'react-hot-toast'
-import { Users as UsersIcon, Search, Building2 } from 'lucide-react'
+import { Users as UsersIcon, Search, Building2, UserPlus } from 'lucide-react'
 import AdminNav from '../../components/AdminNav'
 import StatusBadge from '../../components/StatusBadge'
 import Spinner from '../../components/Spinner'
 import EmptyState from '../../components/EmptyState'
 import Modal from '../../components/Modal'
-import { SelectInput } from '../../components/Field'
-import { listUsers, updateUserStatus, updateUserRole, assignUserWorkshop } from '../../services/adminApi'
+import { SelectInput, TextInput } from '../../components/Field'
+import { listUsers, createStaffUser, updateUserStatus, updateUserRole, assignUserWorkshop } from '../../services/adminApi'
 import { listWorkshops } from '../../services/workshopApi'
 import { USER_ROLES, USER_STATUSES, formatDateTime } from '../../utils/transitions'
 import { useAuth } from '../../contexts/authContext.js'
@@ -27,6 +27,22 @@ import {
 const ROLE_FILTERS = ['ALL', ...USER_ROLES]
 const STATUS_FILTERS = ['ALL', ...USER_STATUSES]
 const WORKSHOP_STAFF_ROLES = ['WORKSHOP_MANAGER', 'SERVICE_ADVISOR']
+const STAFF_ROLES = ['WORKSHOP_MANAGER', 'SERVICE_ADVISOR', 'MECHANIC']
+const GENDER_OPTIONS = [
+  { value: 'male', label: 'Male' },
+  { value: 'female', label: 'Female' },
+  { value: 'other', label: 'Other' },
+]
+
+const EMPTY_STAFF_FORM = {
+  name: '',
+  email: '',
+  phone: '',
+  password: '',
+  gender: '',
+  role: '',
+  workshopId: '',
+}
 
 export default function Users() {
   const { user: currentUser } = useAuth()
@@ -48,6 +64,10 @@ export default function Users() {
   const [workshops, setWorkshops] = useState([])
   const [workshopsLoading, setWorkshopsLoading] = useState(false)
   const [updating, setUpdating] = useState(false)
+
+  const [staffOpen, setStaffOpen] = useState(false)
+  const [staffForm, setStaffForm] = useState(EMPTY_STAFF_FORM)
+  const [creating, setCreating] = useState(false)
 
   const buildParams = () => {
     const params = { page, limit: 15, sortBy: 'createdAt', sortOrder: 'desc' }
@@ -168,6 +188,51 @@ export default function Users() {
     }
   }
 
+  const openStaff = async () => {
+    setStaffForm(EMPTY_STAFF_FORM)
+    setStaffOpen(true)
+    setWorkshopsLoading(true)
+    try {
+      const res = await listWorkshops({ limit: 100, sortBy: 'name', sortOrder: 'asc' })
+      setWorkshops(res.data?.workshops || [])
+    } catch (err) {
+      toast.error(err.message)
+    } finally {
+      setWorkshopsLoading(false)
+    }
+  }
+
+  const updateStaffField = (key) => (e) => {
+    setStaffForm((s) => ({ ...s, [key]: e.target.value }))
+  }
+
+  const handleCreateStaff = async (e) => {
+    e.preventDefault()
+    if (!staffForm.name?.trim() || !staffForm.email?.trim() || !staffForm.phone?.trim() || !staffForm.role) {
+      toast.error('Name, email, phone and role are required')
+      return
+    }
+    setCreating(true)
+    try {
+      await createStaffUser({
+        name: staffForm.name,
+        email: staffForm.email,
+        phone: staffForm.phone,
+        password: staffForm.password,
+        gender: staffForm.gender || 'other',
+        role: staffForm.role,
+        workshopId: staffForm.workshopId || null,
+      })
+      toast.success(`${staffForm.role.replace(/_/g, ' ')} created`)
+      setStaffOpen(false)
+      reload()
+    } catch (err) {
+      toast.error(err.message)
+    } finally {
+      setCreating(false)
+    }
+  }
+
   const goToPage = (next) => {
     if (next < 1 || next > pagination.totalPages) return
     setPage(next)
@@ -179,18 +244,33 @@ export default function Users() {
 
       <div className="max-w-7xl mx-auto px-4 sm:px-8 py-8 space-y-6">
         <div>
-          <div className="flex items-center gap-3 mb-1">
-            <UsersIcon size={22} style={{ color: ACCENT }} />
-            <h1
-              className="text-3xl font-black uppercase tracking-widest"
-              style={{ fontFamily: "'Barlow Condensed', sans-serif" }}
+          <div className="flex items-center justify-between gap-4 flex-wrap">
+            <div>
+              <div className="flex items-center gap-3 mb-1">
+                <UsersIcon size={22} style={{ color: ACCENT }} />
+                <h1
+                  className="text-3xl font-black uppercase tracking-widest"
+                  style={{ fontFamily: "'Barlow Condensed', sans-serif" }}
+                >
+                  Users
+                </h1>
+              </div>
+              <p className="text-sm" style={{ color: MUTED }}>
+                {pagination.total} registered users
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={openStaff}
+              className="inline-flex items-center gap-2 px-5 py-3 text-xs font-black uppercase tracking-widest transition-all duration-200 cursor-pointer"
+              style={primaryButtonStyle}
+              onMouseEnter={(e) => (e.currentTarget.style.background = ACCENT_HOVER)}
+              onMouseLeave={(e) => (e.currentTarget.style.background = ACCENT)}
             >
-              Users
-            </h1>
+              <UserPlus size={15} />
+              Add Staff
+            </button>
           </div>
-          <p className="text-sm" style={{ color: MUTED }}>
-            {pagination.total} registered users
-          </p>
         </div>
 
         <div className="flex flex-col gap-3">
@@ -528,6 +608,118 @@ export default function Users() {
             {updating ? 'Updating...' : 'Update Posting'}
           </button>
         </div>
+      </Modal>
+
+      <Modal
+        open={staffOpen}
+        onClose={() => setStaffOpen(false)}
+        title="Add Staff User"
+        maxWidth="max-w-2xl"
+      >
+        <form onSubmit={handleCreateStaff} className="space-y-4" noValidate>
+          <p className="text-sm" style={{ color: MUTED }}>
+            Staff accounts are created only by an admin. Staff cannot self-register.
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <TextInput
+              label="Full Name"
+              required
+              value={staffForm.name}
+              onChange={updateStaffField('name')}
+              placeholder="Ravi Kumar"
+            />
+            <TextInput
+              label="Email"
+              type="email"
+              required
+              value={staffForm.email}
+              onChange={updateStaffField('email')}
+              placeholder="ravi@kromdetail.com"
+            />
+            <TextInput
+              label="Phone"
+              type="tel"
+              required
+              value={staffForm.phone}
+              onChange={updateStaffField('phone')}
+              placeholder="9876500000"
+            />
+            <TextInput
+              label="Password"
+              type="password"
+              required
+              value={staffForm.password}
+              onChange={updateStaffField('password')}
+              placeholder="Min 8 chars with a symbol"
+            />
+            <SelectInput
+              label="Gender"
+              value={staffForm.gender}
+              onChange={updateStaffField('gender')}
+              placeholder="Select gender"
+            >
+              {GENDER_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value} style={{ background: PANEL }}>
+                  {opt.label}
+                </option>
+              ))}
+            </SelectInput>
+            <SelectInput
+              label="Role"
+              required
+              value={staffForm.role}
+              onChange={updateStaffField('role')}
+              placeholder="Select staff role"
+            >
+              {STAFF_ROLES.map((r) => (
+                <option key={r} value={r} style={{ background: PANEL }}>
+                  {r.replace(/_/g, ' ')}
+                </option>
+              ))}
+            </SelectInput>
+            <div className="sm:col-span-2">
+              <SelectInput
+                label="Assigned Workshop"
+                value={staffForm.workshopId}
+                onChange={updateStaffField('workshopId')}
+                placeholder="Not assigned yet"
+              >
+                {workshopsLoading ? (
+                  <option disabled style={{ background: PANEL }}>Loading workshops…</option>
+                ) : (
+                  workshops.map((w) => (
+                    <option key={w._id} value={w._id} style={{ background: PANEL }}>
+                      {w.name}
+                      {w.address?.city ? ` · ${w.address.city}` : ''}
+                    </option>
+                  ))
+                )}
+              </SelectInput>
+            </div>
+          </div>
+          <div className="flex items-center justify-end gap-3 pt-2">
+            <button
+              type="button"
+              onClick={() => setStaffOpen(false)}
+              className="px-5 py-3 text-xs font-black uppercase tracking-widest transition-colors duration-200 cursor-pointer"
+              style={ghostButtonStyle}
+              onMouseEnter={(e) => { e.currentTarget.style.borderColor = ACCENT; e.currentTarget.style.color = ACCENT }}
+              onMouseLeave={(e) => { e.currentTarget.style.borderColor = LINE_STRONG; e.currentTarget.style.color = '#8a8580' }}
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={creating}
+              className="px-6 py-3 text-xs font-black uppercase tracking-widest transition-all duration-200 cursor-pointer disabled:opacity-50"
+              style={primaryButtonStyle}
+              onMouseEnter={(e) => { if (!e.currentTarget.disabled) e.currentTarget.style.background = ACCENT_HOVER }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = ACCENT }}
+            >
+              {creating ? 'Creating...' : 'Create Staff'}
+            </button>
+          </div>
+        </form>
       </Modal>
     </div>
   )

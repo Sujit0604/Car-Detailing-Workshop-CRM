@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
-import { ClipboardList, Wrench, Plus } from 'lucide-react'
+import { ClipboardList, Wrench, Plus, Eye } from 'lucide-react'
 import AdminNav from '../../components/AdminNav'
 import StatusBadge from '../../components/StatusBadge'
 import Spinner from '../../components/Spinner'
@@ -45,6 +46,7 @@ const JOB_FILTERS = [
 const TERMINAL_JOB_STATUSES = ['COMPLETED', 'CANCELLED']
 
 export default function Jobs() {
+  const navigate = useNavigate()
   const [jobs, setJobs] = useState([])
   const [pagination, setPagination] = useState({ page: 1, totalPages: 1, total: 0 })
   const [page, setPage] = useState(1)
@@ -325,6 +327,17 @@ export default function Jobs() {
                     </td>
                     <td className="px-5 py-3.5">
                       <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => navigate(`/jobs/${j._id}`)}
+                          className="inline-flex items-center gap-1 px-3 py-1.5 text-[10px] font-black uppercase tracking-widest transition-colors duration-200 cursor-pointer"
+                          style={ghostButtonStyle}
+                          onMouseEnter={(e) => { e.currentTarget.style.borderColor = ACCENT; e.currentTarget.style.color = ACCENT }}
+                          onMouseLeave={(e) => { e.currentTarget.style.borderColor = LINE_STRONG; e.currentTarget.style.color = '#8a8580' }}
+                        >
+                          <Eye size={11} />
+                          View
+                        </button>
                         <button
                           type="button"
                           onClick={() => openAssign(j)}

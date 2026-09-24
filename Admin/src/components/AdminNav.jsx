@@ -8,6 +8,7 @@ import {
   Layers,
   CalendarClock,
   ClipboardList,
+  Package,
   LogOut,
 } from 'lucide-react'
 import Modal from './Modal'
@@ -29,6 +30,7 @@ const ADMIN_LINKS = [
   { to: '/service-categories', label: 'Categories', icon: Layers },
   { to: '/bookings', label: 'Bookings', icon: CalendarClock },
   { to: '/jobs', label: 'Jobs', icon: ClipboardList },
+  { to: '/inventory', label: 'Inventory', icon: Package },
 ]
 
 export default function AdminNav() {

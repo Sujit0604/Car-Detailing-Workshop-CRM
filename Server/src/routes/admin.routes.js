@@ -6,6 +6,7 @@ const logger = require("../utils/logger.js");
 const {
   getStats,
   listUsers,
+  createStaffUser,
   updateUserStatus,
   updateUserRole,
   updateUserWorkshop,
@@ -18,6 +19,7 @@ const {
   updateUserStatusSchema,
   updateUserRoleSchema,
   updateUserWorkshopSchema,
+  createStaffUserSchema,
 } = require("../validators/admin.validator.js");
 const {
   listBookingsQuerySchema,
@@ -46,6 +48,13 @@ adminRouter.get(
   validate(listUsersQuerySchema),
   logRoute("ListUsers"),
   listUsers
+);
+
+adminRouter.post(
+  "/users",
+  validate(createStaffUserSchema),
+  logRoute("CreateStaff"),
+  createStaffUser
 );
 
 adminRouter.patch(

@@ -24,7 +24,7 @@ const registerSchema = z.object({
       .string({ required_error: "Phone is required" })
       .trim()
       .regex(/^\+?[0-9]{10,15}$/, "Please provide a valid phone number"),
-    role: z.enum(["CUSTOMER", "ADMIN", "WORKSHOP_MANAGER", "SERVICE_ADVISOR", "MECHANIC"]).optional().default("CUSTOMER"),
+    role: z.enum(["CUSTOMER"]).optional().default("CUSTOMER"),
   }),
 });
 

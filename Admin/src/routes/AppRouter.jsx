@@ -11,7 +11,10 @@ import Services from "../pages/admin/Services.jsx";
 import ServiceCategories from "../pages/admin/ServiceCategories.jsx";
 import Users from "../pages/admin/Users.jsx";
 import Bookings from "../pages/admin/Bookings.jsx";
+import BookingDetail from "../pages/admin/BookingDetail.jsx";
 import Jobs from "../pages/admin/Jobs.jsx";
+import JobDetail from "../pages/admin/JobDetail.jsx";
+import Inventory from "../pages/admin/Inventory.jsx";
 import ProtectedRoute from "../components/ProtectedRoute.jsx";
 import AdminRoute from "../components/AdminRoute.jsx";
 
@@ -83,11 +86,41 @@ const router = createBrowserRouter(
         }
       />
       <Route
+        path="/bookings/:bookingId"
+        element={
+          <ProtectedRoute>
+            <AdminRoute>
+              <BookingDetail />
+            </AdminRoute>
+          </ProtectedRoute>
+        }
+      />
+      <Route
         path="/jobs"
         element={
           <ProtectedRoute>
             <AdminRoute>
               <Jobs />
+            </AdminRoute>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/jobs/:jobId"
+        element={
+          <ProtectedRoute>
+            <AdminRoute>
+              <JobDetail />
+            </AdminRoute>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/inventory"
+        element={
+          <ProtectedRoute>
+            <AdminRoute>
+              <Inventory />
             </AdminRoute>
           </ProtectedRoute>
         }

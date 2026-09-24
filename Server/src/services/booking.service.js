@@ -213,9 +213,12 @@ const createBookingService = async (userId, bookingData) => {
 
 const getBookingByIdService = async (bookingId, user) => {
   const booking = await Booking.findById(bookingId)
+    .populate("customerId", "name email phone")
     .populate("vehicleId", "registrationNumber make model color")
     .populate("workshopId", "name code address")
-    .populate("services.serviceId", "name slug");
+    .populate("services.serviceId", "name slug")
+    .populate("couponId", "code description discountType discountValue maximumDiscount minimumOrderValue")
+    .populate("cancellation.cancelledBy", "name email role");
 
   if (!booking) {
     throw new ApiError(404, "Booking not found");
@@ -266,6 +269,7 @@ const listBookingsService = async (user, query, workshopId) => {
 
   const [bookings, total] = await Promise.all([
     Booking.find(filter)
+      .populate("customerId", "name email phone")
       .populate("vehicleId", "registrationNumber make model")
       .populate("workshopId", "name code")
       .sort(sort)

@@ -12,6 +12,7 @@ import Bookings from "../pages/customer/Bookings.jsx";
 import JobBoard from "../pages/workshop/JobBoard.jsx";
 import JobDetail from "../pages/workshop/JobDetail.jsx";
 import WorkshopBookings from "../pages/workshop/WorkshopBookings.jsx";
+import WorkshopBookingDetail from "../pages/workshop/BookingDetail.jsx";
 import Inventory from "../pages/workshop/Inventory.jsx";
 import ProtectedRoute from "../components/ProtectedRoute.jsx";
 import StaffRoute from "../components/StaffRoute.jsx";
@@ -33,6 +34,7 @@ const router = createBrowserRouter(
         <Route path="/workshop/jobs" element={<ProtectedRoute><StaffRoute><JobBoard /></StaffRoute></ProtectedRoute>}/>
         <Route path="/workshop/jobs/:jobId" element={<ProtectedRoute><StaffRoute><JobDetail /></StaffRoute></ProtectedRoute>}/>
         <Route path="/workshop/bookings" element={<ProtectedRoute><RoleRoute roles={['WORKSHOP_MANAGER', 'SERVICE_ADVISOR', 'ADMIN']}><WorkshopBookings /></RoleRoute></ProtectedRoute>}/>
+        <Route path="/workshop/bookings/:bookingId" element={<ProtectedRoute><RoleRoute roles={['WORKSHOP_MANAGER', 'SERVICE_ADVISOR', 'ADMIN']}><WorkshopBookingDetail /></RoleRoute></ProtectedRoute>}/>
         <Route path="/workshop/inventory" element={<ProtectedRoute><RoleRoute roles={['WORKSHOP_MANAGER', 'ADMIN']}><Inventory /></RoleRoute></ProtectedRoute>}/>
     </>,
   ),

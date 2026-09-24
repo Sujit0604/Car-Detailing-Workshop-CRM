@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
-import { CalendarClock, Wallet } from 'lucide-react'
+import { CalendarClock, Wallet, Eye } from 'lucide-react'
 import AdminNav from '../../components/AdminNav'
 import StatusBadge from '../../components/StatusBadge'
 import Spinner from '../../components/Spinner'
@@ -35,6 +36,7 @@ const BOOKING_FILTERS = [
 ]
 
 export default function Bookings() {
+  const navigate = useNavigate()
   const [bookings, setBookings] = useState([])
   const [pagination, setPagination] = useState({ page: 1, totalPages: 1, total: 0 })
   const [page, setPage] = useState(1)
@@ -180,7 +182,7 @@ export default function Bookings() {
             <table className="w-full text-left">
               <thead>
                 <tr style={{ borderBottom: `1px solid ${LINE_STRONG}` }}>
-                  {['Booking', 'Customer', 'Vehicle', 'Workshop', 'Date', 'Amount', 'Status', 'Payment', 'Actions'].map((h) => (
+                  {['Booking', 'Customer', 'Vehicle', 'Date', 'Amount', 'Status', 'Payment', 'Actions'].map((h) => (
                     <th
                       key={h}
                       className="px-5 py-3 text-[11px] font-bold uppercase tracking-widest whitespace-nowrap"
@@ -213,9 +215,6 @@ export default function Bookings() {
                       {b.vehicleId ? `${b.vehicleId.make} ${b.vehicleId.model}` : '—'}
                       <p className="text-xs">{b.vehicleId?.registrationNumber || ''}</p>
                     </td>
-                    <td className="px-5 py-3.5 text-sm" style={{ color: MUTED }}>
-                      {b.workshopId?.name || '—'}
-                    </td>
                     <td className="px-5 py-3.5 text-sm whitespace-nowrap" style={{ color: MUTED }}>
                       {formatDate(b.appointment?.date)} · {b.appointment?.startTime || '—'}
                     </td>
@@ -232,6 +231,17 @@ export default function Bookings() {
                     </td>
                     <td className="px-5 py-3.5">
                       <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => navigate(`/bookings/${b._id}`)}
+                          className="inline-flex items-center gap-1 px-3 py-1.5 text-[10px] font-black uppercase tracking-widest transition-colors duration-200 cursor-pointer"
+                          style={ghostButtonStyle}
+                          onMouseEnter={(e) => { e.currentTarget.style.borderColor = ACCENT; e.currentTarget.style.color = ACCENT }}
+                          onMouseLeave={(e) => { e.currentTarget.style.borderColor = LINE_STRONG; e.currentTarget.style.color = '#8a8580' }}
+                        >
+                          <Eye size={11} />
+                          View
+                        </button>
                         <button
                           type="button"
                           onClick={() => openStatus(b)}
