@@ -16,6 +16,9 @@ import {
   ThumbsDown,
   Loader2,
   ImageIcon,
+  ListChecks,
+  Package,
+  Plus,
 } from 'lucide-react'
 import AppNav from '../../components/AppNav'
 import StatusBadge from '../../components/StatusBadge'
@@ -42,6 +45,19 @@ import {
   deleteMedia,
 } from '../../services/mediaApi'
 import { listMechanics } from '../../services/masterApi'
+import { listInventoryParts } from '../../services/inventoryApi'
+import {
+  listInspections,
+  createInspection,
+  completeInspection,
+} from '../../services/inspectionApi'
+import {
+  listJobTasks,
+  createJobTask,
+  updateJobTaskStatus,
+  deleteJobTask,
+} from '../../services/jobTaskApi'
+import { listJobParts, createJobPart, updateJobPartStatus } from '../../services/jobPartApi'
 import { formatDateTime } from '../../utils/transitions'
 import { getJobActionsForRole } from '../../utils/transitions'
 import { getJobBackPath } from '../../utils/routes'
@@ -84,6 +100,23 @@ const TASK_ACTIONS = {
 
 const STAFF_ROLES = ['SERVICE_ADVISOR', 'WORKSHOP_MANAGER', 'ADMIN']
 const PHOTO_ROLES = ['SERVICE_ADVISOR', 'WORKSHOP_MANAGER', 'ADMIN', 'MECHANIC']
+
+const INSPECTION_TYPES = ['INITIAL', 'FINAL', 'REINSPECTION']
+const ITEM_CONDITIONS = ['GOOD', 'FAIR', 'POOR', 'DAMAGED', 'REPLACE_REQUIRED']
+const TASK_TYPES = ['REPAIR', 'DETAILING', 'INSPECTION', 'MAINTENANCE']
+const TASK_STATUSES = ['PENDING', 'IN_PROGRESS', 'COMPLETED', 'BLOCKED']
+const PART_STATUSES = ['RESERVED', 'USED', 'RETURNED', 'CANCELLED']
+
+const CONDITION_COLORS = {
+  GOOD: '#10b981',
+  FAIR: '#f59e0b',
+  POOR: '#fb923c',
+  DAMAGED: '#f87171',
+  REPLACE_REQUIRED: '#ef4444',
+}
+
+const EMPTY_INSPECTION_ITEM = { component: '', condition: 'GOOD', notes: '', recommendedAction: '' }
+const EMPTY_TASK = { title: '', description: '', taskType: 'REPAIR', assignedMechanicId: '', estimatedMinutes: '' }
 
 function InfoRow({ icon: Icon, label, value }) {
   return (
@@ -139,6 +172,28 @@ export default function JobDetailPage() {
   const [respondOpen, setRespondOpen] = useState(false)
   const [respondRemarks, setRespondRemarks] = useState('')
 
+  const [inspections, setInspections] = useState([])
+  const [inspectionOpen, setInspectionOpen] = useState(false)
+  const [inspectionForm, setInspectionForm] = useState({
+    inspectionType: 'INITIAL',
+    odometerReading: '',
+    fuelLevel: '',
+    exteriorCondition: '',
+    interiorCondition: '',
+    notes: '',
+    markComplete: true,
+  })
+  const [inspectionItems, setInspectionItems] = useState([{ ...EMPTY_INSPECTION_ITEM }])
+
+  const [tasks, setTasks] = useState([])
+  const [taskOpen, setTaskOpen] = useState(false)
+  const [taskForm, setTaskForm] = useState({ ...EMPTY_TASK })
+
+  const [parts, setParts] = useState([])
+  const [partOpen, setPartOpen] = useState(false)
+  const [partForm, setPartForm] = useState({ inventoryPartId: '', quantity: 1 })
+  const [inventoryParts, setInventoryParts] = useState([])
+
   const load = async () => {
     try {
       const res = await getJob(jobId)
@@ -166,6 +221,33 @@ export default function JobDetailPage() {
     }
   }
 
+  const loadInspections = async () => {
+    try {
+      const res = await listInspections({ jobId, limit: 50 })
+      setInspections(res.data?.inspections || [])
+    } catch {
+      setInspections([])
+    }
+  }
+
+  const loadTasks = async () => {
+    try {
+      const res = await listJobTasks(jobId, { limit: 100 })
+      setTasks(res.data?.tasks || [])
+    } catch {
+      setTasks([])
+    }
+  }
+
+  const loadParts = async () => {
+    try {
+      const res = await listJobParts(jobId, { limit: 100 })
+      setParts(res.data?.parts || [])
+    } catch {
+      setParts([])
+    }
+  }
+
   useEffect(() => {
     let cancelled = false
     getJob(jobId)
@@ -184,6 +266,15 @@ export default function JobDetailPage() {
     listJobMedia(jobId)
       .then((res) => { if (!cancelled) setMedia(res.data || []) })
       .catch(() => { if (!cancelled) setMedia([]) })
+    listInspections({ jobId, limit: 50 })
+      .then((res) => { if (!cancelled) setInspections(res.data?.inspections || []) })
+      .catch(() => { if (!cancelled) setInspections([]) })
+    listJobTasks(jobId, { limit: 100 })
+      .then((res) => { if (!cancelled) setTasks(res.data?.tasks || []) })
+      .catch(() => { if (!cancelled) setTasks([]) })
+    listJobParts(jobId, { limit: 100 })
+      .then((res) => { if (!cancelled) setParts(res.data?.parts || []) })
+      .catch(() => { if (!cancelled) setParts([]) })
     return () => { cancelled = true }
   }, [job?._id, jobId])
 
@@ -378,6 +469,166 @@ export default function JobDetailPage() {
       await deleteMedia(mediaId)
       toast.success('Photo deleted')
       loadMedia()
+    } catch (err) {
+      toast.error(err.message)
+    }
+  }
+
+  const updateInspectionItem = (index, key) => (e) => {
+    setInspectionItems((items) =>
+      items.map((item, i) => (i === index ? { ...item, [key]: e.target.value } : item)),
+    )
+  }
+
+  const addInspectionItem = () => {
+    setInspectionItems((items) => [...items, { ...EMPTY_INSPECTION_ITEM }])
+  }
+
+  const removeInspectionItem = (index) => {
+    setInspectionItems((items) => items.filter((_, i) => i !== index))
+  }
+
+  const handleCreateInspection = async (e) => {
+    e.preventDefault()
+    const items = inspectionItems
+      .filter((item) => item.component?.trim())
+      .map((item) => ({
+        component: item.component.trim(),
+        condition: item.condition,
+        notes: item.notes?.trim() || undefined,
+        recommendedAction: item.recommendedAction?.trim() || undefined,
+      }))
+
+    setUpdating(true)
+    try {
+      const res = await createInspection({
+        jobId: job._id,
+        inspectionType: inspectionForm.inspectionType,
+        odometerReading: inspectionForm.odometerReading !== '' ? Number(inspectionForm.odometerReading) : undefined,
+        fuelLevel: inspectionForm.fuelLevel !== '' ? Number(inspectionForm.fuelLevel) : undefined,
+        exteriorCondition: inspectionForm.exteriorCondition.trim() || undefined,
+        interiorCondition: inspectionForm.interiorCondition.trim() || undefined,
+        notes: inspectionForm.notes.trim() || undefined,
+        items,
+      })
+      if (inspectionForm.markComplete) {
+        await completeInspection(res.data._id)
+        toast.success('Inspection completed')
+      } else {
+        toast.success('Inspection draft saved')
+      }
+      setInspectionOpen(false)
+      setInspectionForm({ inspectionType: 'INITIAL', odometerReading: '', fuelLevel: '', exteriorCondition: '', interiorCondition: '', notes: '', markComplete: true })
+      setInspectionItems([{ ...EMPTY_INSPECTION_ITEM }])
+      loadInspections()
+    } catch (err) {
+      toast.error(err.message)
+    } finally {
+      setUpdating(false)
+    }
+  }
+
+  const handleCompleteInspection = async (inspection) => {
+    try {
+      await completeInspection(inspection._id)
+      toast.success('Inspection marked complete')
+      loadInspections()
+    } catch (err) {
+      toast.error(err.message)
+    }
+  }
+
+  const handleCreateTask = async (e) => {
+    e.preventDefault()
+    if (!taskForm.title.trim()) {
+      toast.error('Task title is required')
+      return
+    }
+    setUpdating(true)
+    try {
+      await createJobTask(job._id, {
+        title: taskForm.title.trim(),
+        description: taskForm.description?.trim() || undefined,
+        taskType: taskForm.taskType,
+        assignedMechanicId: taskForm.assignedMechanicId || undefined,
+        estimatedMinutes: taskForm.estimatedMinutes !== '' ? Number(taskForm.estimatedMinutes) : undefined,
+      })
+      toast.success('Task added to the job card')
+      setTaskOpen(false)
+      setTaskForm({ ...EMPTY_TASK })
+      loadTasks()
+    } catch (err) {
+      toast.error(err.message)
+    } finally {
+      setUpdating(false)
+    }
+  }
+
+  const handleTaskStatus = async (task, status) => {
+    try {
+      await updateJobTaskStatus(job._id, task._id, { status })
+      toast.success(`Task marked ${status.replace(/_/g, ' ').toLowerCase()}`)
+      loadTasks()
+    } catch (err) {
+      toast.error(err.message)
+    }
+  }
+
+  const handleDeleteTask = async (task) => {
+    try {
+      await deleteJobTask(job._id, task._id)
+      toast.success('Task removed')
+      loadTasks()
+    } catch (err) {
+      toast.error(err.message)
+    }
+  }
+
+  const openPartModal = async () => {
+    setPartForm({ inventoryPartId: '', quantity: 1 })
+    setPartOpen(true)
+    if (inventoryParts.length === 0 && job.workshopId?._id) {
+      try {
+        const res = await listInventoryParts({
+          workshopId: job.workshopId._id,
+          status: 'ACTIVE',
+          limit: 100,
+        })
+        const list = res.data?.parts || res.data?.inventoryParts || res.data || []
+        setInventoryParts(Array.isArray(list) ? list : [])
+      } catch {
+        setInventoryParts([])
+      }
+    }
+  }
+
+  const handleAddPart = async (e) => {
+    e.preventDefault()
+    if (!partForm.inventoryPartId) {
+      toast.error('Select an inventory part')
+      return
+    }
+    setUpdating(true)
+    try {
+      await createJobPart(job._id, {
+        inventoryPartId: partForm.inventoryPartId,
+        quantity: Number(partForm.quantity) || 1,
+      })
+      toast.success('Part reserved for this job')
+      setPartOpen(false)
+      loadParts()
+    } catch (err) {
+      toast.error(err.message)
+    } finally {
+      setUpdating(false)
+    }
+  }
+
+  const handlePartStatus = async (part, status) => {
+    try {
+      await updateJobPartStatus(job._id, part._id, { status })
+      toast.success(`Part marked ${status.toLowerCase()}`)
+      loadParts()
     } catch (err) {
       toast.error(err.message)
     }
@@ -786,6 +1037,323 @@ export default function JobDetailPage() {
           )}
         </section>
 
+        {/* Inspections */}
+        <section style={{ border: `1px solid ${LINE_STRONG}`, background: PANEL, padding: '1.5rem' }}>
+          <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
+            <div className="flex items-center gap-3">
+              <ClipboardCheck size={18} style={{ color: ACCENT }} />
+              <h2
+                className="text-base font-black uppercase tracking-widest"
+                style={{ fontFamily: "'Barlow Condensed', sans-serif", letterSpacing: '0.1em' }}
+              >
+                Inspections ({inspections.length})
+              </h2>
+            </div>
+            <button
+              type="button"
+              onClick={() => setInspectionOpen(true)}
+              className="inline-flex items-center gap-1.5 px-4 py-2 text-[11px] font-black uppercase tracking-widest transition-colors duration-200 cursor-pointer"
+              style={ghostButtonStyle}
+              onMouseEnter={(e) => { e.currentTarget.style.borderColor = ACCENT; e.currentTarget.style.color = ACCENT }}
+              onMouseLeave={(e) => { e.currentTarget.style.borderColor = LINE_STRONG; e.currentTarget.style.color = '#8a8580' }}
+            >
+              <Plus size={13} />
+              New Inspection
+            </button>
+          </div>
+
+          {inspections.length === 0 ? (
+            <p className="text-sm" style={{ color: MUTED }}>
+              No inspections recorded. Log the vehicle condition before work starts — it feeds the
+              estimate and protects the shop if the customer disputes the bill.
+            </p>
+          ) : (
+            <div className="space-y-4">
+              {inspections.map((inspection) => (
+                <div
+                  key={inspection._id}
+                  style={{ border: `1px solid ${LINE_STRONG}`, background: PANEL_ACTIVE, padding: '1rem' }}
+                >
+                  <div className="flex items-center justify-between gap-3 flex-wrap mb-3">
+                    <div className="flex items-center gap-3">
+                      <span
+                        className="text-sm font-black"
+                        style={{ color: ACCENT, fontFamily: "'Barlow Condensed', sans-serif" }}
+                      >
+                        {inspection.inspectionType}
+                      </span>
+                      <StatusBadge status={inspection.status} />
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <span className="text-xs" style={{ color: MUTED }}>
+                        {inspection.inspectorId?.name || 'Inspector'} · {formatDateTime(inspection.completedAt || inspection.createdAt)}
+                      </span>
+                      {inspection.status !== 'COMPLETED' && (
+                        <button
+                          type="button"
+                          onClick={() => handleCompleteInspection(inspection)}
+                          className="px-3 py-1.5 text-[10px] font-black uppercase tracking-widest transition-colors duration-200 cursor-pointer"
+                          style={ghostButtonStyle}
+                          onMouseEnter={(e) => { e.currentTarget.style.borderColor = ACCENT; e.currentTarget.style.color = ACCENT }}
+                          onMouseLeave={(e) => { e.currentTarget.style.borderColor = LINE_STRONG; e.currentTarget.style.color = '#8a8580' }}
+                        >
+                          Complete
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {(inspection.odometerReading != null || inspection.fuelLevel != null || inspection.exteriorCondition || inspection.interiorCondition) && (
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-3 text-xs">
+                      {inspection.odometerReading != null && (
+                        <div>
+                          <p className="uppercase tracking-widest" style={{ color: MUTED }}>Odometer</p>
+                          <p style={{ color: FOREGROUND }}>{inspection.odometerReading.toLocaleString('en-IN')} km</p>
+                        </div>
+                      )}
+                      {inspection.fuelLevel != null && (
+                        <div>
+                          <p className="uppercase tracking-widest" style={{ color: MUTED }}>Fuel</p>
+                          <p style={{ color: FOREGROUND }}>{inspection.fuelLevel}%</p>
+                        </div>
+                      )}
+                      {inspection.exteriorCondition && (
+                        <div>
+                          <p className="uppercase tracking-widest" style={{ color: MUTED }}>Exterior</p>
+                          <p style={{ color: FOREGROUND }}>{inspection.exteriorCondition}</p>
+                        </div>
+                      )}
+                      {inspection.interiorCondition && (
+                        <div>
+                          <p className="uppercase tracking-widest" style={{ color: MUTED }}>Interior</p>
+                          <p style={{ color: FOREGROUND }}>{inspection.interiorCondition}</p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {(inspection.items || []).length > 0 && (
+                    <div className="overflow-x-auto" style={{ border: `1px solid ${LINE_STRONG}` }}>
+                      <table className="w-full text-left min-w-[520px]">
+                        <thead>
+                          <tr style={{ borderBottom: `1px solid ${LINE_STRONG}` }}>
+                            {['Component', 'Condition', 'Recommended Action'].map((h) => (
+                              <th
+                                key={h}
+                                className="px-3 py-2 text-[11px] font-bold uppercase tracking-widest"
+                                style={{ color: MUTED, fontFamily: "'Barlow Condensed', sans-serif", letterSpacing: '0.12em' }}
+                              >
+                                {h}
+                              </th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {inspection.items.map((item, index) => (
+                            <tr key={index} style={{ borderBottom: `1px solid ${LINE_STRONG}` }}>
+                              <td className="px-3 py-2 text-sm" style={{ color: FOREGROUND }}>
+                                {item.component}
+                                {item.notes && (
+                                  <p className="text-xs" style={{ color: MUTED }}>{item.notes}</p>
+                                )}
+                              </td>
+                              <td
+                                className="px-3 py-2 text-xs font-semibold uppercase tracking-wider"
+                                style={{ color: CONDITION_COLORS[item.condition] || MUTED }}
+                              >
+                                {String(item.condition || '').replace(/_/g, ' ')}
+                              </td>
+                              <td className="px-3 py-2 text-sm" style={{ color: MUTED }}>
+                                {item.recommendedAction || '—'}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+
+                  {inspection.notes && (
+                    <p className="text-xs mt-3" style={{ color: MUTED }}>{inspection.notes}</p>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+
+        {/* Job tasks */}
+        <section style={{ border: `1px solid ${LINE_STRONG}`, background: PANEL, padding: '1.5rem' }}>
+          <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
+            <div className="flex items-center gap-3">
+              <ListChecks size={18} style={{ color: ACCENT }} />
+              <h2
+                className="text-base font-black uppercase tracking-widest"
+                style={{ fontFamily: "'Barlow Condensed', sans-serif", letterSpacing: '0.1em' }}
+              >
+                Job Tasks ({tasks.length})
+              </h2>
+            </div>
+            <button
+              type="button"
+              onClick={() => setTaskOpen(true)}
+              className="inline-flex items-center gap-1.5 px-4 py-2 text-[11px] font-black uppercase tracking-widest transition-colors duration-200 cursor-pointer"
+              style={ghostButtonStyle}
+              onMouseEnter={(e) => { e.currentTarget.style.borderColor = ACCENT; e.currentTarget.style.color = ACCENT }}
+              onMouseLeave={(e) => { e.currentTarget.style.borderColor = LINE_STRONG; e.currentTarget.style.color = '#8a8580' }}
+            >
+              <Plus size={13} />
+              Add Task
+            </button>
+          </div>
+
+          {tasks.length === 0 ? (
+            <p className="text-sm" style={{ color: MUTED }}>
+              No tasks yet. Break the job down into tasks so mechanics can track progress.
+            </p>
+          ) : (
+            <div className="space-y-2">
+              {tasks.map((task) => (
+                <div
+                  key={task._id}
+                  className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 px-4 py-3"
+                  style={{ border: `1px solid ${LINE_STRONG}`, background: '#0e0e0e' }}
+                >
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold" style={{ color: FOREGROUND }}>{task.title}</p>
+                    {task.description && (
+                      <p className="text-xs mt-0.5" style={{ color: MUTED }}>{task.description}</p>
+                    )}
+                    <p className="text-[11px] mt-1 uppercase tracking-widest" style={{ color: MUTED }}>
+                      {task.taskType}
+                      {task.assignedMechanicId?.userId?.name ? ` · ${task.assignedMechanicId.userId.name}` : ''}
+                      {task.estimatedMinutes ? ` · ~${task.estimatedMinutes} min` : ''}
+                      {task.blockedReason ? ` · ${task.blockedReason}` : ''}
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-2 shrink-0 flex-wrap">
+                    <StatusBadge status={task.status} />
+                    {TASK_STATUSES.filter((status) => status !== task.status).map((status) => (
+                      <button
+                        key={status}
+                        type="button"
+                        onClick={() => handleTaskStatus(task, status)}
+                        className="px-2.5 py-1.5 text-[10px] font-black uppercase tracking-widest transition-colors duration-200 cursor-pointer"
+                        style={ghostButtonStyle}
+                        onMouseEnter={(e) => { e.currentTarget.style.borderColor = ACCENT; e.currentTarget.style.color = ACCENT }}
+                        onMouseLeave={(e) => { e.currentTarget.style.borderColor = LINE_STRONG; e.currentTarget.style.color = '#8a8580' }}
+                      >
+                        {status.replace(/_/g, ' ')}
+                      </button>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteTask(task)}
+                      className="p-1.5 cursor-pointer transition-colors"
+                      style={{ color: MUTED, background: 'transparent', border: 'none' }}
+                      onMouseEnter={(e) => (e.currentTarget.style.color = ACCENT)}
+                      onMouseLeave={(e) => (e.currentTarget.style.color = MUTED)}
+                      aria-label="Delete task"
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+
+        {/* Job parts */}
+        <section style={{ border: `1px solid ${LINE_STRONG}`, background: PANEL, padding: '1.5rem' }}>
+          <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
+            <div className="flex items-center gap-3">
+              <Package size={18} style={{ color: ACCENT }} />
+              <h2
+                className="text-base font-black uppercase tracking-widest"
+                style={{ fontFamily: "'Barlow Condensed', sans-serif", letterSpacing: '0.1em' }}
+              >
+                Parts Used ({parts.length})
+              </h2>
+            </div>
+            <button
+              type="button"
+              onClick={openPartModal}
+              className="inline-flex items-center gap-1.5 px-4 py-2 text-[11px] font-black uppercase tracking-widest transition-colors duration-200 cursor-pointer"
+              style={ghostButtonStyle}
+              onMouseEnter={(e) => { e.currentTarget.style.borderColor = ACCENT; e.currentTarget.style.color = ACCENT }}
+              onMouseLeave={(e) => { e.currentTarget.style.borderColor = LINE_STRONG; e.currentTarget.style.color = '#8a8580' }}
+            >
+              <Plus size={13} />
+              Reserve Part
+            </button>
+          </div>
+
+          {parts.length === 0 ? (
+            <p className="text-sm" style={{ color: MUTED }}>
+              No parts reserved for this job. Reserve a part to deduct it from workshop inventory.
+            </p>
+          ) : (
+            <div className="overflow-x-auto" style={{ border: `1px solid ${LINE_STRONG}` }}>
+              <table className="w-full text-left min-w-[640px]">
+                <thead>
+                  <tr style={{ borderBottom: `1px solid ${LINE_STRONG}` }}>
+                    {['Part', 'Qty', 'Unit Price', 'Total', 'Status', 'Action'].map((h) => (
+                      <th
+                        key={h}
+                        className="px-4 py-2.5 text-[11px] font-bold uppercase tracking-widest"
+                        style={{ color: MUTED, fontFamily: "'Barlow Condensed', sans-serif", letterSpacing: '0.12em' }}
+                      >
+                        {h}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {parts.map((part) => (
+                    <tr key={part._id} style={{ borderBottom: `1px solid ${LINE_STRONG}` }}>
+                      <td className="px-4 py-2.5 text-sm" style={{ color: FOREGROUND }}>
+                        {part.inventoryPartId?.name || 'Part'}
+                        <p className="text-xs" style={{ color: MUTED }}>
+                          {part.inventoryPartId?.partNumber || '—'}
+                        </p>
+                      </td>
+                      <td className="px-4 py-2.5 text-sm" style={{ color: MUTED }}>{part.quantity}</td>
+                      <td className="px-4 py-2.5 text-sm" style={{ color: MUTED }}>
+                        ₹{(part.unitPrice || 0).toLocaleString('en-IN')}
+                      </td>
+                      <td className="px-4 py-2.5 text-sm font-semibold" style={{ color: FOREGROUND }}>
+                        ₹{(part.totalPrice || 0).toLocaleString('en-IN')}
+                      </td>
+                      <td className="px-4 py-2.5">
+                        <StatusBadge status={part.status} />
+                      </td>
+                      <td className="px-4 py-2.5">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          {PART_STATUSES.filter((status) => status !== part.status).map((status) => (
+                            <button
+                              key={status}
+                              type="button"
+                              onClick={() => handlePartStatus(part, status)}
+                              className="px-2.5 py-1.5 text-[10px] font-black uppercase tracking-widest transition-colors duration-200 cursor-pointer"
+                              style={ghostButtonStyle}
+                              onMouseEnter={(e) => { e.currentTarget.style.borderColor = ACCENT; e.currentTarget.style.color = ACCENT }}
+                              onMouseLeave={(e) => { e.currentTarget.style.borderColor = LINE_STRONG; e.currentTarget.style.color = '#8a8580' }}
+                            >
+                              {status}
+                            </button>
+                          ))}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+
         {/* Before / After photos */}
         <section style={{ border: `1px solid ${LINE_STRONG}`, background: PANEL, padding: '1.5rem' }}>
           <div className="flex items-center justify-between mb-5">
@@ -819,6 +1387,297 @@ export default function JobDetailPage() {
           </div>
         </section>
       </div>
+
+      {/* Inspection modal */}
+      <Modal open={inspectionOpen} onClose={() => setInspectionOpen(false)} title="New Inspection" maxWidth="max-w-2xl">
+        <form onSubmit={handleCreateInspection} className="space-y-4" noValidate>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <SelectInput
+              label="Inspection Type"
+              value={inspectionForm.inspectionType}
+              onChange={(e) => setInspectionForm((s) => ({ ...s, inspectionType: e.target.value }))}
+            >
+              {INSPECTION_TYPES.map((type) => (
+                <option key={type} value={type} style={{ background: PANEL }}>{type}</option>
+              ))}
+            </SelectInput>
+            <TextInput
+              label="Odometer Reading (km)"
+              type="number"
+              min={0}
+              value={inspectionForm.odometerReading}
+              onChange={(e) => setInspectionForm((s) => ({ ...s, odometerReading: e.target.value }))}
+              placeholder="24500"
+            />
+            <TextInput
+              label="Fuel Level (%)"
+              type="number"
+              min={0}
+              max={100}
+              value={inspectionForm.fuelLevel}
+              onChange={(e) => setInspectionForm((s) => ({ ...s, fuelLevel: e.target.value }))}
+              placeholder="50"
+            />
+            <TextInput
+              label="Exterior Condition"
+              value={inspectionForm.exteriorCondition}
+              onChange={(e) => setInspectionForm((s) => ({ ...s, exteriorCondition: e.target.value }))}
+              placeholder="Scratches on bumper"
+            />
+            <TextInput
+              label="Interior Condition"
+              value={inspectionForm.interiorCondition}
+              onChange={(e) => setInspectionForm((s) => ({ ...s, interiorCondition: e.target.value }))}
+              placeholder="Good, seats cleaned"
+            />
+          </div>
+
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <p
+                className="text-xs uppercase tracking-widest"
+                style={{ color: '#8a8580', letterSpacing: '0.14em' }}
+              >
+                Checklist
+              </p>
+              <button
+                type="button"
+                onClick={addInspectionItem}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-black uppercase tracking-widest cursor-pointer"
+                style={ghostButtonStyle}
+              >
+                <Plus size={12} />
+                Add Item
+              </button>
+            </div>
+
+            <div className="space-y-2 max-h-[28vh] overflow-y-auto pr-1">
+              {inspectionItems.map((item, index) => (
+                <div
+                  key={index}
+                  className="grid grid-cols-12 gap-2 items-end p-3"
+                  style={{ border: `1px solid ${LINE_STRONG}`, background: '#0e0e0e' }}
+                >
+                  <div className="col-span-4">
+                    <TextInput
+                      label="Component"
+                      required
+                      value={item.component}
+                      onChange={updateInspectionItem(index, 'component')}
+                      placeholder="Front bumper"
+                    />
+                  </div>
+                  <div className="col-span-3">
+                    <SelectInput
+                      label="Condition"
+                      value={item.condition}
+                      onChange={updateInspectionItem(index, 'condition')}
+                    >
+                      {ITEM_CONDITIONS.map((condition) => (
+                        <option key={condition} value={condition} style={{ background: PANEL }}>
+                          {condition.replace(/_/g, ' ')}
+                        </option>
+                      ))}
+                    </SelectInput>
+                  </div>
+                  <div className="col-span-4">
+                    <TextInput
+                      label="Recommended Action"
+                      value={item.recommendedAction}
+                      onChange={updateInspectionItem(index, 'recommendedAction')}
+                      placeholder="Replace"
+                    />
+                  </div>
+                  <div className="col-span-1 flex justify-end">
+                    <button
+                      type="button"
+                      onClick={() => removeInspectionItem(index)}
+                      disabled={inspectionItems.length === 1}
+                      className="p-2 cursor-pointer disabled:opacity-30"
+                      style={{ color: MUTED, background: 'transparent', border: 'none' }}
+                      aria-label="Remove checklist item"
+                    >
+                      <Trash2 size={15} />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <TextArea
+            label="Overall Notes"
+            rows={2}
+            value={inspectionForm.notes}
+            onChange={(e) => setInspectionForm((s) => ({ ...s, notes: e.target.value }))}
+            placeholder="Anything the customer should be aware of"
+          />
+
+          <label className="flex items-center gap-2 text-sm cursor-pointer" style={{ color: MUTED }}>
+            <input
+              type="checkbox"
+              checked={inspectionForm.markComplete}
+              onChange={(e) => setInspectionForm((s) => ({ ...s, markComplete: e.target.checked }))}
+            />
+            Mark this inspection as completed immediately
+          </label>
+
+          <div className="flex items-center justify-end gap-3 pt-1">
+            <button
+              type="button"
+              onClick={() => setInspectionOpen(false)}
+              className="px-5 py-3 text-xs font-black uppercase tracking-widest transition-colors duration-200 cursor-pointer"
+              style={ghostButtonStyle}
+              onMouseEnter={(e) => { e.currentTarget.style.borderColor = ACCENT; e.currentTarget.style.color = ACCENT }}
+              onMouseLeave={(e) => { e.currentTarget.style.borderColor = LINE_STRONG; e.currentTarget.style.color = '#8a8580' }}
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={updating}
+              className="px-6 py-3 text-xs font-black uppercase tracking-widest transition-all duration-200 cursor-pointer disabled:opacity-50"
+              style={primaryButtonStyle}
+              onMouseEnter={(e) => (e.currentTarget.style.background = ACCENT_HOVER)}
+              onMouseLeave={(e) => (e.currentTarget.style.background = ACCENT)}
+            >
+              {updating ? 'Saving...' : inspectionForm.markComplete ? 'Save & Complete' : 'Save Draft'}
+            </button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Task modal */}
+      <Modal open={taskOpen} onClose={() => setTaskOpen(false)} title="Add Job Task">
+        <form onSubmit={handleCreateTask} className="space-y-4" noValidate>
+          <TextInput
+            label="Task Title"
+            required
+            value={taskForm.title}
+            onChange={(e) => setTaskForm((s) => ({ ...s, title: e.target.value }))}
+            placeholder="Door repaint"
+          />
+          <TextArea
+            label="Description"
+            rows={2}
+            value={taskForm.description}
+            onChange={(e) => setTaskForm((s) => ({ ...s, description: e.target.value }))}
+            placeholder="What needs to be done"
+          />
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <SelectInput
+              label="Task Type"
+              value={taskForm.taskType}
+              onChange={(e) => setTaskForm((s) => ({ ...s, taskType: e.target.value }))}
+            >
+              {TASK_TYPES.map((type) => (
+                <option key={type} value={type} style={{ background: PANEL }}>{type}</option>
+              ))}
+            </SelectInput>
+            <SelectInput
+              label="Assign Mechanic"
+              placeholder="Unassigned"
+              value={taskForm.assignedMechanicId}
+              onChange={(e) => setTaskForm((s) => ({ ...s, assignedMechanicId: e.target.value }))}
+            >
+              {mechanics.map((m) => (
+                <option key={m._id} value={m._id} style={{ background: PANEL }}>
+                  {m.userId?.name || m.employeeCode}
+                </option>
+              ))}
+            </SelectInput>
+            <TextInput
+              label="Estimated Minutes"
+              type="number"
+              min={0}
+              value={taskForm.estimatedMinutes}
+              onChange={(e) => setTaskForm((s) => ({ ...s, estimatedMinutes: e.target.value }))}
+              placeholder="90"
+            />
+          </div>
+          <div className="flex items-center justify-end gap-3 pt-1">
+            <button
+              type="button"
+              onClick={() => setTaskOpen(false)}
+              className="px-5 py-3 text-xs font-black uppercase tracking-widest transition-colors duration-200 cursor-pointer"
+              style={ghostButtonStyle}
+              onMouseEnter={(e) => { e.currentTarget.style.borderColor = ACCENT; e.currentTarget.style.color = ACCENT }}
+              onMouseLeave={(e) => { e.currentTarget.style.borderColor = LINE_STRONG; e.currentTarget.style.color = '#8a8580' }}
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={updating}
+              className="px-6 py-3 text-xs font-black uppercase tracking-widest transition-all duration-200 cursor-pointer disabled:opacity-50"
+              style={primaryButtonStyle}
+              onMouseEnter={(e) => (e.currentTarget.style.background = ACCENT_HOVER)}
+              onMouseLeave={(e) => (e.currentTarget.style.background = ACCENT)}
+            >
+              {updating ? 'Adding...' : 'Add Task'}
+            </button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Part modal */}
+      <Modal open={partOpen} onClose={() => setPartOpen(false)} title="Reserve Part">
+        <form onSubmit={handleAddPart} className="space-y-4" noValidate>
+          <SelectInput
+            label="Inventory Part"
+            required
+            placeholder={inventoryParts.length ? 'Select a part' : 'No active parts in inventory'}
+            value={partForm.inventoryPartId}
+            onChange={(e) => setPartForm((s) => ({ ...s, inventoryPartId: e.target.value }))}
+          >
+            {inventoryParts.map((part) => (
+              <option key={part._id} value={part._id} style={{ background: PANEL }}>
+                {part.name} — {part.partNumber} ({part.stock?.quantity ?? 0} {part.unit || 'in stock'})
+              </option>
+            ))}
+          </SelectInput>
+
+          {inventoryParts.length === 0 && (
+            <TextInput
+              label="Inventory Part ID (manual)"
+              value={partForm.inventoryPartId}
+              onChange={(e) => setPartForm((s) => ({ ...s, inventoryPartId: e.target.value }))}
+              placeholder="Paste inventory part _id"
+            />
+          )}
+
+          <TextInput
+            label="Quantity"
+            type="number"
+            min={1}
+            value={partForm.quantity}
+            onChange={(e) => setPartForm((s) => ({ ...s, quantity: e.target.value }))}
+          />
+
+          <div className="flex items-center justify-end gap-3 pt-1">
+            <button
+              type="button"
+              onClick={() => setPartOpen(false)}
+              className="px-5 py-3 text-xs font-black uppercase tracking-widest transition-colors duration-200 cursor-pointer"
+              style={ghostButtonStyle}
+              onMouseEnter={(e) => { e.currentTarget.style.borderColor = ACCENT; e.currentTarget.style.color = ACCENT }}
+              onMouseLeave={(e) => { e.currentTarget.style.borderColor = LINE_STRONG; e.currentTarget.style.color = '#8a8580' }}
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={updating || !partForm.inventoryPartId}
+              className="px-6 py-3 text-xs font-black uppercase tracking-widest transition-all duration-200 cursor-pointer disabled:opacity-50"
+              style={primaryButtonStyle}
+              onMouseEnter={(e) => (e.currentTarget.style.background = ACCENT_HOVER)}
+              onMouseLeave={(e) => (e.currentTarget.style.background = ACCENT)}
+            >
+              {updating ? 'Reserving...' : 'Reserve Part'}
+            </button>
+          </div>
+        </form>
+      </Modal>
 
       {/* Check-in modal */}
       <Modal open={checkInOpen} onClose={() => setCheckInOpen(false)} title="Check In Vehicle">

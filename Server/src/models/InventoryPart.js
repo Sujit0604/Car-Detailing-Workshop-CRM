@@ -47,6 +47,7 @@ const inventoryPartSchema = new mongoose.Schema(
     stock: {
       quantity: { type: Number, min: 0, default: 0 },
       reservedQuantity: { type: Number, min: 0, default: 0 },
+      reasonOfLastAdjustment: { type: String, trim: true, default: null },
       reorderLevel: { type: Number, min: 0, default: 0 },
       maxStockLevel: { type: Number, min: 0, default: 0 },
     },

@@ -13,18 +13,23 @@ const notificationSchema = new mongoose.Schema(
         "BOOKING_CONFIRMED",
         "BOOKING_CANCELLED",
         "JOB_STARTED",
+        "JOB_COMPLETED",
         "ESTIMATE_READY",
         "ESTIMATE_APPROVED",
         "VEHICLE_READY",
         "PAYMENT_SUCCESS",
         "PAYMENT_FAILED",
+        "INVOICE_ISSUED",
+        "INVOICE_PAID",
+        "REVIEW_RESPONSE",
+        "REVIEW_UPDATED",
         "GENERAL",
       ],
       default: "GENERAL",
     },
     channel: {
       type: String,
-      enum: ["IN_APP", "EMAIL", "SMS", "WHATSAPP", "PUSH"],
+      enum: ["IN_APP"],
       default: "IN_APP",
     },
     title: {
@@ -43,16 +48,22 @@ const notificationSchema = new mongoose.Schema(
         default: null,
       },
     },
-    status: {
-      type: String,
-      enum: ["PENDING", "SENT", "FAILED", "READ"],
-      default: "PENDING",
-    },
-    sentAt: { type: Date },
-    readAt: { type: Date },
-    failureReason: {
+    dedupeKey: {
       type: String,
       trim: true,
+    },
+    status: {
+      type: String,
+      enum: ["SENT", "READ"],
+      default: "SENT",
+    },
+    sentAt: {
+      type: Date,
+      default: Date.now,
+    },
+    readAt: {
+      type: Date,
+      default: null,
     },
   },
   {
@@ -61,8 +72,15 @@ const notificationSchema = new mongoose.Schema(
 );
 
 notificationSchema.index({ userId: 1, createdAt: -1 });
-notificationSchema.index({ status: 1 });
-notificationSchema.index({ type: 1 });
+notificationSchema.index({ userId: 1, readAt: 1, createdAt: -1 });
+notificationSchema.index({ type: 1, createdAt: -1 });
+notificationSchema.index(
+  { userId: 1, dedupeKey: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { dedupeKey: { $type: "string" } },
+  },
+);
 
 const Notification = mongoose.model("Notification", notificationSchema);
 

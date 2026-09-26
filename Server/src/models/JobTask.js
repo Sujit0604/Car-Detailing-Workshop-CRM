@@ -7,6 +7,11 @@ const jobTaskSchema = new mongoose.Schema(
       ref: "Job",
       required: true,
     },
+    sequence: {
+      type: Number,
+      min: 0,
+      default: 0,
+    },
     title: {
       type: String,
       required: true,
@@ -24,7 +29,7 @@ const jobTaskSchema = new mongoose.Schema(
     assignedMechanicId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Mechanic",
-      required: true,
+      default: null,
     },
     status: {
       type: String,
@@ -41,9 +46,23 @@ const jobTaskSchema = new mongoose.Schema(
     },
     startedAt: { type: Date },
     completedAt: { type: Date },
+    blockedReason: {
+      type: String,
+      trim: true,
+    },
     notes: {
       type: String,
       trim: true,
+    },
+    isDeleted: {
+      type: Boolean,
+      default: false,
+    },
+    deletedAt: { type: Date },
+    deletedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
     },
   },
   {
@@ -51,7 +70,7 @@ const jobTaskSchema = new mongoose.Schema(
   },
 );
 
-jobTaskSchema.index({ jobId: 1 });
+jobTaskSchema.index({ jobId: 1, sequence: 1 }, { unique: true });
 jobTaskSchema.index({ assignedMechanicId: 1 });
 jobTaskSchema.index({ status: 1 });
 

@@ -52,6 +52,7 @@ const inspectionSchema = new mongoose.Schema(
       enum: ["DRAFT", "COMPLETED"],
       default: "DRAFT",
     },
+    completedAt: { type: Date },
     odometerReading: {
       type: Number,
       min: 0,
@@ -84,6 +85,7 @@ const inspectionSchema = new mongoose.Schema(
 );
 
 inspectionSchema.index({ jobId: 1, createdAt: -1 });
+inspectionSchema.index({ jobId: 1, status: 1 });
 inspectionSchema.index({ inspectorId: 1 });
 
 const Inspection = mongoose.model("Inspection", inspectionSchema);

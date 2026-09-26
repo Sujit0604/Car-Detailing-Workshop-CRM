@@ -37,6 +37,20 @@ export const USER_ROLES = [
 
 export const USER_STATUSES = ['ACTIVE', 'INACTIVE', 'BLOCKED', 'PENDING_VERIFICATION']
 
+export const JOB_TASK_NEXT_STATUS = {
+  PENDING: ['IN_PROGRESS', 'BLOCKED'],
+  IN_PROGRESS: ['COMPLETED', 'BLOCKED'],
+  BLOCKED: ['IN_PROGRESS'],
+  COMPLETED: [],
+}
+
+export const JOB_PART_NEXT_STATUS = {
+  RESERVED: ['USED', 'CANCELLED'],
+  USED: ['RETURNED'],
+  RETURNED: [],
+  CANCELLED: [],
+}
+
 export const formatDate = (value) => {
   if (!value) return '—'
   return new Date(value).toLocaleDateString('en-IN', {
