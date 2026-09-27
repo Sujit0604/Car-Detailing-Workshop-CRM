@@ -10,6 +10,12 @@ import {
   ClipboardList,
   Package,
   LogOut,
+  FileText,
+  Wallet,
+  MessageSquare,
+  ClipboardCheck,
+  Bell,
+  ScrollText,
 } from 'lucide-react'
 import Modal from './Modal'
 import { useAuth } from '../contexts/authContext.js'
@@ -31,6 +37,12 @@ const ADMIN_LINKS = [
   { to: '/bookings', label: 'Bookings', icon: CalendarClock },
   { to: '/jobs', label: 'Jobs', icon: ClipboardList },
   { to: '/inventory', label: 'Inventory', icon: Package },
+  { to: '/inspections', label: 'Inspections', icon: ClipboardCheck },
+  { to: '/invoices', label: 'Invoices', icon: FileText },
+  { to: '/payments', label: 'Payments', icon: Wallet },
+  { to: '/reviews', label: 'Reviews', icon: MessageSquare },
+  { to: '/notifications', label: 'Notifications', icon: Bell },
+  { to: '/audit-logs', label: 'Audit Logs', icon: ScrollText },
 ]
 
 export default function AdminNav() {
@@ -48,7 +60,7 @@ export default function AdminNav() {
       className="sticky top-0 z-50 px-4 sm:px-8"
       style={{ background: PANEL, borderBottom: `1px solid ${LINE_STRONG}` }}
     >
-      <div className="max-w-7xl mx-auto flex items-center justify-between gap-4 py-4">
+      <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-x-4 gap-y-3 py-4">
         <NavLink
           to="/dashboard"
           className="flex items-center gap-2.5"
@@ -75,12 +87,12 @@ export default function AdminNav() {
           </div>
         </NavLink>
 
-        <nav className="hidden md:flex items-center gap-1">
+        <nav className="hidden md:flex flex-1 min-w-0 flex-wrap items-center justify-center gap-x-1 gap-y-1">
           {ADMIN_LINKS.map(({ to, label }) => (
             <NavLink
               key={to}
               to={to}
-              className="px-3.5 py-2 text-xs font-bold uppercase tracking-widest transition-colors duration-200"
+              className="px-2.5 lg:px-3.5 py-2 text-xs font-bold uppercase tracking-widest transition-colors duration-200"
               style={({ isActive }) => ({
                 color: isActive ? ACCENT : MUTED,
                 fontFamily: "'Barlow Condensed', sans-serif",
@@ -129,7 +141,7 @@ export default function AdminNav() {
         </div>
       </div>
 
-      <nav className="md:hidden flex items-center overflow-x-auto gap-1 pb-3">
+      <nav className="md:hidden w-full flex flex-wrap items-center justify-center gap-1.5 pb-3">
         {ADMIN_LINKS.map(({ to, label, icon: Icon }) => (
           <NavLink
             key={to}

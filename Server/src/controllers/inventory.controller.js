@@ -22,7 +22,7 @@ const getInventoryPart = asyncHandler(async (req, res) => {
 });
 
 const listInventoryParts = asyncHandler(async (req, res) => {
-  const result = await listInventoryPartsService(req.query);
+  const result = await listInventoryPartsService(req.query, req.user);
 
   return sendResponse(res, 200, "Inventory parts fetched successfully", result);
 });

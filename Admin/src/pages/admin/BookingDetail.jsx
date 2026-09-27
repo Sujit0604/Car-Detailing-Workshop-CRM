@@ -10,12 +10,18 @@ import {
   CalendarDays,
   FileText,
   Tag,
+  Car,
+  Fuel,
+  Gauge,
+  Hash,
+  Settings2,
 } from 'lucide-react'
 import AdminNav from '../../components/AdminNav'
 import StatusBadge from '../../components/StatusBadge'
 import Spinner from '../../components/Spinner'
 import { getBooking } from '../../services/bookingApi'
 import { formatDateTime } from '../../utils/transitions'
+import { formatEnum, getColorHex, vehicleModelLabel } from '../../utils/vehicle'
 import {
   ACCENT,
   BACKGROUND,
@@ -37,7 +43,7 @@ function formatAddress(address) {
   ].filter(Boolean).join(', ')
 }
 
-function InfoRow({ icon: Icon, label, value }) {
+function InfoRow({ icon: Icon, label, value, colorDot, sub }) {
   return (
     <div className="flex items-start gap-3 py-2.5" style={{ borderBottom: `1px solid ${LINE_STRONG}` }}>
       <div
@@ -50,9 +56,19 @@ function InfoRow({ icon: Icon, label, value }) {
         <p className="text-xs uppercase tracking-widest" style={{ color: MUTED, fontFamily: "'Barlow Condensed', sans-serif" }}>
           {label}
         </p>
-        <p className="text-sm mt-0.5 break-words" style={{ color: FOREGROUND }}>
+        <p className="text-sm mt-0.5 break-words flex items-center gap-2" style={{ color: FOREGROUND }}>
           {value || '—'}
+          {value && colorDot && (
+            <span
+              className="inline-block w-3.5 h-3.5 rounded-full shrink-0"
+              title={value}
+              style={{ background: colorDot, border: `1px solid ${LINE_STRONG}` }}
+            />
+          )}
         </p>
+        {value && sub && (
+          <p className="text-xs mt-0.5 break-words" style={{ color: MUTED }}>{sub}</p>
+        )}
       </div>
     </div>
   )
@@ -184,9 +200,30 @@ export default function BookingDetailPage() {
               >
                 Vehicle & Workshop
               </h2>
-              <InfoRow icon={Truck} label="Vehicle" value={booking.vehicleId ? `${booking.vehicleId.make} ${booking.vehicleId.model}` : null} />
+              <InfoRow icon={Truck} label="Vehicle" value={vehicleModelLabel(booking.vehicleId)} />
               <InfoRow icon={Truck} label="Registration" value={booking.vehicleId?.registrationNumber} />
-              <InfoRow icon={Truck} label="Colour" value={booking.vehicleId?.color} />
+              <InfoRow icon={Tag} label="Variant" value={booking.vehicleId?.variant} />
+              <InfoRow icon={Hash} label="VIN" value={booking.vehicleId?.vin} />
+              <InfoRow
+                icon={Gauge}
+                label="Manufacturing Year"
+                value={booking.vehicleId?.manufacturingYear ? String(booking.vehicleId.manufacturingYear) : null}
+              />
+              <InfoRow icon={Fuel} label="Fuel Type" value={formatEnum(booking.vehicleId?.fuelType)} />
+              <InfoRow icon={Settings2} label="Transmission" value={formatEnum(booking.vehicleId?.transmission)} />
+              <InfoRow
+                icon={Car}
+                label="Colour"
+                value={booking.vehicleId?.color}
+                colorDot={booking.vehicleId?.color ? getColorHex(booking.vehicleId.color) : null}
+              />
+              {booking.vehicleId?.odometer > 0 && (
+                <InfoRow
+                  icon={Gauge}
+                  label="Odometer"
+                  value={`${Number(booking.vehicleId.odometer).toLocaleString('en-IN')} km`}
+                />
+              )}
               {(booking.vehicleId?.images || []).length > 0 && (
                 <div className="py-2.5" style={{ borderBottom: `1px solid ${LINE_STRONG}` }}>
                   <p
@@ -211,6 +248,8 @@ export default function BookingDetailPage() {
               <InfoRow icon={ClipboardList} label="Workshop" value={booking.workshopId?.name} />
               <InfoRow icon={ClipboardList} label="Workshop Code" value={booking.workshopId?.code} />
               <InfoRow icon={ClipboardList} label="Workshop Address" value={formatAddress(booking.workshopId?.address)} />
+              <InfoRow icon={User} label="Workshop Manager" value={booking.workshopManagerId?.name} sub={[booking.workshopManagerId?.phone, booking.workshopManagerId?.email].filter(Boolean).join(' · ')} />
+              <InfoRow icon={User} label="Service Advisor" value={booking.serviceAdvisorId?.name} sub={[booking.serviceAdvisorId?.phone, booking.serviceAdvisorId?.email].filter(Boolean).join(' · ')} />
             </section>
           </section>
         </div>

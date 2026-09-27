@@ -15,6 +15,12 @@ import BookingDetail from "../pages/admin/BookingDetail.jsx";
 import Jobs from "../pages/admin/Jobs.jsx";
 import JobDetail from "../pages/admin/JobDetail.jsx";
 import Inventory from "../pages/admin/Inventory.jsx";
+import Invoices from "../pages/admin/Invoices.jsx";
+import Payments from "../pages/admin/Payments.jsx";
+import Reviews from "../pages/admin/Reviews.jsx";
+import Inspections from "../pages/admin/Inspections.jsx";
+import Notifications from "../pages/admin/Notifications.jsx";
+import AuditLogs from "../pages/admin/AuditLogs.jsx";
 import ProtectedRoute from "../components/ProtectedRoute.jsx";
 import AdminRoute from "../components/AdminRoute.jsx";
 
@@ -121,6 +127,66 @@ const router = createBrowserRouter(
           <ProtectedRoute>
             <AdminRoute>
               <Inventory />
+            </AdminRoute>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/invoices"
+        element={
+          <ProtectedRoute>
+            <AdminRoute>
+              <Invoices />
+            </AdminRoute>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/payments"
+        element={
+          <ProtectedRoute>
+            <AdminRoute>
+              <Payments />
+            </AdminRoute>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/reviews"
+        element={
+          <ProtectedRoute>
+            <AdminRoute>
+              <Reviews />
+            </AdminRoute>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/inspections"
+        element={
+          <ProtectedRoute>
+            <AdminRoute>
+              <Inspections />
+            </AdminRoute>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/notifications"
+        element={
+          <ProtectedRoute>
+            <AdminRoute>
+              <Notifications />
+            </AdminRoute>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/audit-logs"
+        element={
+          <ProtectedRoute>
+            <AdminRoute>
+              <AuditLogs />
             </AdminRoute>
           </ProtectedRoute>
         }

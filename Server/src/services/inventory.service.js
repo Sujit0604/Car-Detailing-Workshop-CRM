@@ -1,5 +1,6 @@
 const ApiError = require("../utils/ApiError.js");
 const logger = require("../utils/logger.js");
+const { resolveScopedWorkshopId } = require("../utils/workshopScope.js");
 const InventoryPart = require("../models/InventoryPart.js");
 const Workshop = require("../models/Workshop.js");
 
@@ -39,9 +40,9 @@ const getInventoryPartService = async (partId) => {
   return part;
 };
 
-const listInventoryPartsService = async (query) => {
+const listInventoryPartsService = async (query, user) => {
   const {
-    workshopId,
+    workshopId: requestedWorkshopId,
     page = 1,
     limit = 10,
     status,
@@ -52,6 +53,8 @@ const listInventoryPartsService = async (query) => {
   } = query;
 
   const filter = {};
+
+  const workshopId = await resolveScopedWorkshopId(user, requestedWorkshopId);
 
   if (workshopId) filter.workshopId = workshopId;
   if (status) filter.status = status;

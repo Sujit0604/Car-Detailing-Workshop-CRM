@@ -11,8 +11,9 @@ import {
   SelectInput,
 } from '../../components/Field'
 import { listWorkshopBookings, updateBookingStatus, updateBookingPaymentStatus } from '../../services/bookingApi'
-import { listWorkshops } from '../../services/masterApi'
+import { getWorkshop, listWorkshops } from '../../services/masterApi'
 import { useAuth } from '../../contexts/authContext'
+import { getOwnWorkshopId } from '../../utils/workshop'
 import { BOOKING_NEXT_STATUS, BOOKING_PAYMENT_STATUSES, formatDate } from '../../utils/transitions'
 import {
   ACCENT,
@@ -41,7 +42,9 @@ const BOOKING_FILTERS = [
 export default function WorkshopBookingsPage() {
   const { user } = useAuth()
   const navigate = useNavigate()
+  const ownWorkshopId = getOwnWorkshopId(user)
   const [workshops, setWorkshops] = useState([])
+  const [ownWorkshop, setOwnWorkshop] = useState(null)
   const [workshopId, setWorkshopId] = useState('')
   const [bookings, setBookings] = useState([])
   const [filter, setFilter] = useState('ALL')
@@ -53,7 +56,18 @@ export default function WorkshopBookingsPage() {
   const [paymentValue, setPaymentValue] = useState('')
   const [updating, setUpdating] = useState(false)
 
+  // Workshop staff are pinned to the workshop they are posted to, everyone else picks one.
+  const activeWorkshopId = ownWorkshopId || workshopId
+
   useEffect(() => {
+    if (ownWorkshopId) {
+      let cancelled = false
+      getWorkshop(ownWorkshopId)
+        .then((res) => { if (!cancelled) setOwnWorkshop(res.data) })
+        .catch((err) => { if (!cancelled) toast.error(err.message) })
+      return () => { cancelled = true }
+    }
+
     let cancelled = false
     listWorkshops({ limit: 100 })
       .then((res) => {
@@ -72,12 +86,12 @@ export default function WorkshopBookingsPage() {
     return () => {
       cancelled = true
     }
-  }, [user?.workshopId])
+  }, [ownWorkshopId, user?.workshopId])
 
   const load = async () => {
-    if (!workshopId) return
+    if (!activeWorkshopId) return
     try {
-      const res = await listWorkshopBookings(workshopId, { limit: 100 })
+      const res = await listWorkshopBookings(activeWorkshopId, { limit: 100 })
       setBookings(res.data?.bookings || [])
     } catch (err) {
       toast.error(err.message)
@@ -85,14 +99,14 @@ export default function WorkshopBookingsPage() {
   }
 
   useEffect(() => {
-    if (!workshopId) return
+    if (!activeWorkshopId) return
     let cancelled = false
-    listWorkshopBookings(workshopId, { limit: 100 })
+    listWorkshopBookings(activeWorkshopId, { limit: 100 })
       .then((res) => { if (!cancelled) setBookings(res.data?.bookings || []) })
       .catch((err) => { if (!cancelled) toast.error(err.message) })
       .finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
-  }, [workshopId])
+  }, [activeWorkshopId])
 
   const visibleBookings = filter === 'ALL' ? bookings : bookings.filter((b) => b.status === filter)
 
@@ -154,22 +168,39 @@ export default function WorkshopBookingsPage() {
           </p>
         </div>
 
-        <div className="max-w-sm">
-          <SelectInput
-            label="Workshop"
-            required
-            placeholder="Select a workshop"
-            value={workshopId}
-            onChange={(e) => { setLoading(true); setWorkshopId(e.target.value) }}
-          >
-            {workshops.map((w) => (
-              <option key={w._id} value={w._id} style={{ background: PANEL }}>
-                {w.name}
-                {w.address?.city ? ` · ${w.address.city}` : ''}
-              </option>
-            ))}
-          </SelectInput>
-        </div>
+        {ownWorkshopId ? (
+          <div className="max-w-sm">
+            <label
+              className="block text-xs uppercase tracking-widest mb-1.5"
+              style={{ color: MUTED, letterSpacing: '0.14em' }}
+            >
+              Workshop
+            </label>
+            <div
+              className="w-full px-4 py-3 text-sm"
+              style={{ background: '#0c0c0c', border: '1px solid #2a2a2a', color: FOREGROUND }}
+            >
+              {ownWorkshop?.name || 'Your workshop'}
+            </div>
+          </div>
+        ) : (
+          <div className="max-w-sm">
+            <SelectInput
+              label="Workshop"
+              required
+              placeholder="Select a workshop"
+              value={workshopId}
+              onChange={(e) => { setLoading(true); setWorkshopId(e.target.value) }}
+            >
+              {workshops.map((w) => (
+                <option key={w._id} value={w._id} style={{ background: PANEL }}>
+                  {w.name}
+                  {w.address?.city ? ` · ${w.address.city}` : ''}
+                </option>
+              ))}
+            </SelectInput>
+          </div>
+        )}
 
         <div className="flex items-center gap-2 overflow-x-auto pb-2">
           {BOOKING_FILTERS.map((f) => (
@@ -191,7 +222,7 @@ export default function WorkshopBookingsPage() {
           ))}
         </div>
 
-        {!workshopId ? (
+        {!activeWorkshopId ? (
           <EmptyState title="Select a workshop" message="Choose a workshop to see its bookings." />
         ) : loading ? (
           <Spinner />

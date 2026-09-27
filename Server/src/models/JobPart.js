@@ -37,13 +37,29 @@ const jobPartSchema = new mongoose.Schema(
     },
     reservedAt: { type: Date },
     usedAt: { type: Date },
+    returnedAt: { type: Date },
+    cancelledAt: { type: Date },
+    statusReason: {
+      type: String,
+      trim: true,
+    },
+    isDeleted: {
+      type: Boolean,
+      default: false,
+    },
+    deletedAt: { type: Date },
+    deletedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
   },
   {
     timestamps: true,
   },
 );
 
-jobPartSchema.index({ jobId: 1 });
+jobPartSchema.index({ jobId: 1, isDeleted: 1, createdAt: -1 });
 jobPartSchema.index({ inventoryPartId: 1 });
 jobPartSchema.index({ status: 1 });
 

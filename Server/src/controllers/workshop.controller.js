@@ -17,7 +17,7 @@ const createWorkshop = asyncHandler(async (req, res) => {
 });
 
 const getWorkshopById = asyncHandler(async (req, res) => {
-  const workshop = await getWorkshopByIdService(req.params.id);
+  const workshop = await getWorkshopByIdService(req.params.id, req.user);
 
   return sendResponse(res, 200, "Workshop fetched successfully", workshop);
 });
@@ -41,13 +41,13 @@ const deleteWorkshop = asyncHandler(async (req, res) => {
 });
 
 const getWorkshopOverview = asyncHandler(async (req, res) => {
-  const result = await getWorkshopOverviewService(req.params.id);
+  const result = await getWorkshopOverviewService(req.params.id, req.user);
 
   return sendResponse(res, 200, "Workshop overview fetched successfully", result);
 });
 
 const getWorkshopStaff = asyncHandler(async (req, res) => {
-  const result = await getWorkshopStaffService(req.params.id);
+  const result = await getWorkshopStaffService(req.params.id, req.user);
 
   return sendResponse(res, 200, "Workshop staff fetched successfully", result);
 });

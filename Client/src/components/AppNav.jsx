@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { NavLink, useNavigate } from 'react-router-dom'
+import { useEffect, useState } from 'react'
+import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import {
   LayoutGrid,
   Car,
@@ -8,10 +8,15 @@ import {
   Wrench,
   ClipboardList,
   Package,
+  Bell,
+  Receipt,
+  CreditCard,
+  Star,
   LogOut,
 } from 'lucide-react'
 import Modal from './Modal'
 import { useAuth } from '../contexts/authContext.js'
+import { getUnreadCount } from '../services/notificationApi'
 import { getHomePath } from '../utils/routes'
 import {
   ACCENT,
@@ -22,11 +27,18 @@ import {
   PANEL,
 } from '../config/theme'
 
+const STAFF_NOTIFICATIONS = { to: '/workshop/notifications', label: 'Alerts', icon: Bell, badge: true }
+const CUSTOMER_NOTIFICATIONS = { to: '/notifications', label: 'Notifications', icon: Bell, badge: true }
+
 const CUSTOMER_LINKS = [
   { to: '/dashboard', label: 'Dashboard', icon: LayoutGrid },
   { to: '/vehicles', label: 'Vehicles', icon: Car },
   { to: '/book-service', label: 'Book Service', icon: CalendarPlus },
   { to: '/bookings', label: 'My Bookings', icon: CalendarClock },
+  { to: '/invoices', label: 'Invoices', icon: Receipt },
+  { to: '/payments', label: 'Payments', icon: CreditCard },
+  { to: '/reviews', label: 'Reviews', icon: Star },
+  CUSTOMER_NOTIFICATIONS,
 ]
 
 const ROLE_LINKS = {
@@ -34,30 +46,52 @@ const ROLE_LINKS = {
   SERVICE_ADVISOR: [
     { to: '/workshop/jobs', label: 'Job Board', icon: ClipboardList },
     { to: '/workshop/bookings', label: 'Bookings', icon: Wrench },
+    STAFF_NOTIFICATIONS,
   ],
   WORKSHOP_MANAGER: [
     { to: '/workshop/jobs', label: 'Job Board', icon: ClipboardList },
     { to: '/workshop/bookings', label: 'Bookings', icon: Wrench },
     { to: '/workshop/inventory', label: 'Inventory', icon: Package },
+    STAFF_NOTIFICATIONS,
   ],
   MECHANIC: [
     { to: '/workshop/jobs', label: 'My Jobs', icon: ClipboardList },
+    STAFF_NOTIFICATIONS,
   ],
   ADMIN: [
     { to: '/workshop/jobs', label: 'Job Board', icon: ClipboardList },
     { to: '/workshop/bookings', label: 'Bookings', icon: Wrench },
     { to: '/workshop/inventory', label: 'Inventory', icon: Package },
+    STAFF_NOTIFICATIONS,
   ],
 }
 
 export default function AppNav() {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
+  const location = useLocation()
   const [logoutOpen, setLogoutOpen] = useState(false)
+  const [unreadCount, setUnreadCount] = useState(0)
   const role = user?.role
 
   const links = ROLE_LINKS[role] || CUSTOMER_LINKS
   const homePath = getHomePath(role)
+  const onNotificationsPage =
+    location.pathname === '/notifications' || location.pathname === '/workshop/notifications'
+  const badgeCount = onNotificationsPage ? 0 : unreadCount
+
+  useEffect(() => {
+    if (!user?._id) return
+    let cancelled = false
+    getUnreadCount()
+      .then((res) => {
+        if (!cancelled) setUnreadCount(res.data?.count || 0)
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [user?._id, location.pathname])
 
   const handleLogout = () => {
     logout()
@@ -90,7 +124,7 @@ export default function AppNav() {
         </NavLink>
 
         <nav className="hidden md:flex items-center gap-1">
-          {links.map(({ to, label }) => (
+          {links.map(({ to, label, badge }) => (
             <NavLink
               key={to}
               to={to}
@@ -103,6 +137,14 @@ export default function AppNav() {
               })}
             >
               {label}
+              {badge && badgeCount > 0 && (
+                <span
+                  className="ml-1.5 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 text-[10px] font-black"
+                  style={{ background: ACCENT, color: '#fff' }}
+                >
+                  {badgeCount > 99 ? '99+' : badgeCount}
+                </span>
+              )}
             </NavLink>
           ))}
         </nav>
@@ -147,7 +189,7 @@ export default function AppNav() {
       </div>
 
       <nav className="md:hidden flex items-center overflow-x-auto gap-1 pb-3">
-        {links.map(({ to, label, icon: Icon }) => (
+        {links.map(({ to, label, icon: Icon, badge }) => (
           <NavLink
             key={to}
             to={to}
@@ -162,6 +204,14 @@ export default function AppNav() {
           >
             <Icon size={13} />
             {label}
+            {badge && badgeCount > 0 && (
+              <span
+                className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 text-[10px] font-black"
+                style={{ background: ACCENT, color: '#fff' }}
+              >
+                {badgeCount > 99 ? '99+' : badgeCount}
+              </span>
+            )}
           </NavLink>
         ))}
       </nav>
