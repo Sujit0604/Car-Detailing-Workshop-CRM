@@ -17,7 +17,9 @@ import {
   SelectInput,
   TextInput,
 } from '../../components/Field'
-import { listWorkshops } from '../../services/masterApi'
+import { useAuth } from '../../contexts/authContext'
+import { getWorkshop, listWorkshops } from '../../services/masterApi'
+import { getOwnWorkshopId } from '../../utils/workshop'
 import {
   listInventoryParts,
   createInventoryPart,
@@ -56,7 +58,10 @@ const EMPTY_FORM = {
 }
 
 export default function InventoryPage() {
+  const { user } = useAuth()
+  const ownWorkshopId = getOwnWorkshopId(user)
   const [workshops, setWorkshops] = useState([])
+  const [ownWorkshop, setOwnWorkshop] = useState(null)
   const [workshopId, setWorkshopId] = useState('')
   const [parts, setParts] = useState([])
   const [loading, setLoading] = useState(true)
@@ -69,7 +74,18 @@ export default function InventoryPage() {
   const [adjustTarget, setAdjustTarget] = useState(null)
   const [adjustForm, setAdjustForm] = useState({ adjustment: '', reason: '' })
 
+  // Workshop staff are pinned to the workshop they are posted to, everyone else picks one.
+  const activeWorkshopId = ownWorkshopId || workshopId
+
   useEffect(() => {
+    if (ownWorkshopId) {
+      let cancelled = false
+      getWorkshop(ownWorkshopId)
+        .then((res) => { if (!cancelled) setOwnWorkshop(res.data) })
+        .catch((err) => { if (!cancelled) toast.error(err.message) })
+      return () => { cancelled = true }
+    }
+
     let cancelled = false
     listWorkshops({ limit: 100 })
       .then((res) => {
@@ -80,13 +96,13 @@ export default function InventoryPage() {
       })
       .catch((err) => { if (!cancelled) toast.error(err.message) })
     return () => { cancelled = true }
-  }, [])
+  }, [ownWorkshopId])
 
   useEffect(() => {
-    if (!workshopId) return
+    if (!activeWorkshopId) return
     let cancelled = false
     listInventoryParts({
-      workshopId,
+      workshopId: activeWorkshopId,
       limit: 100,
       search: search || undefined,
     })
@@ -94,12 +110,12 @@ export default function InventoryPage() {
       .catch((err) => { if (!cancelled) toast.error(err.message) })
       .finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
-  }, [workshopId, search])
+  }, [activeWorkshopId, search])
 
   const loadParts = async () => {
-    if (!workshopId) return
+    if (!activeWorkshopId) return
     try {
-      const res = await listInventoryParts({ workshopId, limit: 100 })
+      const res = await listInventoryParts({ workshopId: activeWorkshopId, limit: 100 })
       setParts(res.data?.parts || [])
     } catch (err) {
       toast.error(err.message)
@@ -112,7 +128,7 @@ export default function InventoryPage() {
 
   const openAdd = () => {
     setEditing(null)
-    setForm({ ...EMPTY_FORM, workshopId })
+    setForm({ ...EMPTY_FORM, workshopId: activeWorkshopId })
     setModalOpen(true)
   }
 
@@ -252,21 +268,42 @@ export default function InventoryPage() {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div>
-            <SelectInput
-              label="Workshop"
-              required
-              value={workshopId}
-              onChange={(e) => { setLoading(true); setWorkshopId(e.target.value) }}
-            >
-              {workshops.map((w) => (
-                <option key={w._id} value={w._id} style={{ background: PANEL }}>
-                  {w.name}
-                  {w.address?.city ? ` · ${w.address.city}` : ''}
-                </option>
-              ))}
-            </SelectInput>
-          </div>
+          {ownWorkshopId ? (
+            <div>
+              <label
+                className="block text-xs uppercase tracking-widest mb-1.5"
+                style={{ color: MUTED, letterSpacing: '0.14em' }}
+              >
+                Workshop
+              </label>
+              <div
+                className="w-full px-4 py-3 text-sm"
+                style={{
+                  background: '#0c0c0c',
+                  border: '1px solid #2a2a2a',
+                  color: FOREGROUND,
+                }}
+              >
+                {ownWorkshop?.name || 'Your workshop'}
+              </div>
+            </div>
+          ) : (
+            <div>
+              <SelectInput
+                label="Workshop"
+                required
+                value={workshopId}
+                onChange={(e) => { setLoading(true); setWorkshopId(e.target.value) }}
+              >
+                {workshops.map((w) => (
+                  <option key={w._id} value={w._id} style={{ background: PANEL }}>
+                    {w.name}
+                    {w.address?.city ? ` · ${w.address.city}` : ''}
+                  </option>
+                ))}
+              </SelectInput>
+            </div>
+          )}
           <div>
             <label
               className="block text-xs uppercase tracking-widest mb-1.5"
@@ -307,7 +344,7 @@ export default function InventoryPage() {
           </div>
         </div>
 
-        {!workshopId ? (
+        {!activeWorkshopId ? (
           <EmptyState
             icon={Package}
             title="Select a workshop"

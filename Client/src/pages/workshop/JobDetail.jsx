@@ -19,6 +19,11 @@ import {
   ListChecks,
   Package,
   Plus,
+  Car,
+  Fuel,
+  Hash,
+  Settings2,
+  Tag,
 } from 'lucide-react'
 import AppNav from '../../components/AppNav'
 import StatusBadge from '../../components/StatusBadge'
@@ -61,6 +66,7 @@ import { listJobParts, createJobPart, updateJobPartStatus } from '../../services
 import { formatDateTime } from '../../utils/transitions'
 import { getJobActionsForRole } from '../../utils/transitions'
 import { getJobBackPath } from '../../utils/routes'
+import { formatEnum, getColorHex, vehicleModelLabel } from '../../utils/vehicle'
 import {
   ACCENT,
   ACCENT_HOVER,
@@ -118,7 +124,7 @@ const CONDITION_COLORS = {
 const EMPTY_INSPECTION_ITEM = { component: '', condition: 'GOOD', notes: '', recommendedAction: '' }
 const EMPTY_TASK = { title: '', description: '', taskType: 'REPAIR', assignedMechanicId: '', estimatedMinutes: '' }
 
-function InfoRow({ icon: Icon, label, value }) {
+function InfoRow({ icon: Icon, label, value, colorDot }) {
   return (
     <div className="flex items-start gap-3 py-2.5" style={{ borderBottom: `1px solid ${LINE_STRONG}` }}>
       <div
@@ -131,8 +137,15 @@ function InfoRow({ icon: Icon, label, value }) {
         <p className="text-xs uppercase tracking-widest" style={{ color: MUTED, fontFamily: "'Barlow Condensed', sans-serif" }}>
           {label}
         </p>
-        <p className="text-sm mt-0.5 break-words" style={{ color: FOREGROUND }}>
+        <p className="text-sm mt-0.5 break-words flex items-center gap-2" style={{ color: FOREGROUND }}>
           {value || '—'}
+          {value && colorDot && (
+            <span
+              className="inline-block w-3.5 h-3.5 rounded-full shrink-0"
+              title={value}
+              style={{ background: colorDot, border: `1px solid ${LINE_STRONG}` }}
+            />
+          )}
         </p>
       </div>
     </div>
@@ -866,10 +879,11 @@ export default function JobDetailPage() {
               Job Details
             </h2>
             <InfoRow icon={User} label="Customer" value={job.customerId?.name} />
+            <InfoRow icon={User} label="Contact" value={job.customerId?.phone} />
             <InfoRow icon={ClipboardList} label="Booking" value={job.bookingId?.bookingNumber} />
             <InfoRow icon={ClipboardList} label="Workshop" value={job.workshopId?.name} />
-            <InfoRow icon={User} label="Service Advisor" value={job.serviceAdvisorId?.name} />
             <InfoRow icon={User} label="Workshop Manager" value={job.workshopManagerId?.name} />
+            <InfoRow icon={User} label="Service Advisor" value={job.serviceAdvisorId?.name} />
             <InfoRow icon={User} label="Assigned Mechanic" value={job.assignedMechanicId ? (job.assignedMechanicId.userId?.name ? `${job.assignedMechanicId.employeeCode} (${job.assignedMechanicId.userId.name})` : (job.assignedMechanicId.employeeCode || 'Mechanic')) : 'Unassigned'} />
             <InfoRow icon={Gauge} label="Odometer In" value={job.odometerIn ? `${job.odometerIn.toLocaleString()} km` : null} />
             <InfoRow icon={Gauge} label="Odometer Out" value={job.odometerOut ? `${job.odometerOut.toLocaleString()} km` : null} />
@@ -889,8 +903,29 @@ export default function JobDetailPage() {
                 Vehicle
               </h2>
               <InfoRow icon={ClipboardList} label="Registration" value={job.vehicleId?.registrationNumber} />
-              <InfoRow icon={ClipboardList} label="Model" value={job.vehicleId ? `${job.vehicleId.make} ${job.vehicleId.model}` : null} />
-              <InfoRow icon={ClipboardList} label="Colour" value={job.vehicleId?.color} />
+              <InfoRow icon={Car} label="Model" value={vehicleModelLabel(job.vehicleId)} />
+              <InfoRow icon={Tag} label="Variant" value={job.vehicleId?.variant} />
+              <InfoRow icon={Hash} label="VIN" value={job.vehicleId?.vin} />
+              <InfoRow
+                icon={Gauge}
+                label="Manufacturing Year"
+                value={job.vehicleId?.manufacturingYear ? String(job.vehicleId.manufacturingYear) : null}
+              />
+              <InfoRow icon={Fuel} label="Fuel Type" value={formatEnum(job.vehicleId?.fuelType)} />
+              <InfoRow icon={Settings2} label="Transmission" value={formatEnum(job.vehicleId?.transmission)} />
+              <InfoRow
+                icon={Car}
+                label="Colour"
+                value={job.vehicleId?.color}
+                colorDot={job.vehicleId?.color ? getColorHex(job.vehicleId.color) : null}
+              />
+              {job.vehicleId?.odometer > 0 && (
+                <InfoRow
+                  icon={Gauge}
+                  label="Odometer"
+                  value={`${Number(job.vehicleId.odometer).toLocaleString('en-IN')} km`}
+                />
+              )}
             </section>
 
             {job.customerNotes && (

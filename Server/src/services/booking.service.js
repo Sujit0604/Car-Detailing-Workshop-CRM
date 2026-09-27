@@ -1,13 +1,19 @@
 const { v4: uuidv4 } = require("uuid");
 const ApiError = require("../utils/ApiError.js");
 const logger = require("../utils/logger.js");
+const { resolveScopedWorkshopId, assertOwnWorkshop } = require("../utils/workshopScope.js");
 const Booking = require("../models/Booking.js");
 const Vehicle = require("../models/Vehicle.js");
 const Workshop = require("../models/Workshop.js");
 const Service = require("../models/Service.js");
 const Coupon = require("../models/Coupon.js");
+const User = require("../models/User.js");
 
 const TAX_RATE_PERCENT = 18;
+
+const VEHICLE_DETAIL_FIELDS =
+  "registrationNumber make model variant vin manufacturingYear fuelType transmission color odometer images";
+const VEHICLE_SUMMARY_FIELDS = "registrationNumber make model variant color";
 
 const generateBookingNumber = () => {
   return `BKG-${new Date().getFullYear()}-${uuidv4().split("-")[0].toUpperCase()}`;
@@ -211,10 +217,10 @@ const createBookingService = async (userId, bookingData) => {
   return booking;
 };
 
-const getBookingByIdService = async (bookingId, user) => {
+const loadBookingDoc = async (bookingId) => {
   const booking = await Booking.findById(bookingId)
     .populate("customerId", "name email phone")
-    .populate("vehicleId", "registrationNumber make model color images")
+    .populate("vehicleId", VEHICLE_DETAIL_FIELDS)
     .populate("workshopId", "name code address")
     .populate("services.serviceId", "name slug")
     .populate("couponId", "code description discountType discountValue maximumDiscount minimumOrderValue")
@@ -224,13 +230,45 @@ const getBookingByIdService = async (bookingId, user) => {
     throw new ApiError(404, "Booking not found");
   }
 
-  const isStaff = user.role !== "CUSTOMER";
+  return booking;
+};
 
-  if (!isStaff && booking.customerId.toString() !== user._id.toString()) {
+const assertBookingAccess = async (booking, user) => {
+  if (user.role === "CUSTOMER" && booking.customerId.toString() !== user._id.toString()) {
     throw new ApiError(403, "You don't have permission to access this booking");
   }
 
-  return booking;
+  await assertOwnWorkshop(user, booking.workshopId?._id);
+};
+
+const getBookingByIdService = async (bookingId, user) => {
+  const booking = await loadBookingDoc(bookingId);
+
+  await assertBookingAccess(booking, user);
+
+  const workshopId = booking.workshopId?._id;
+
+  // A booking is not linked to a job yet, so the advisor and manager shown here
+  // are the active staff of the workshop the booking belongs to. Same shape as
+  // the job details page.
+  const [serviceAdvisor, workshopManager] = await Promise.all([
+    User.findOne({
+      role: "SERVICE_ADVISOR",
+      status: "ACTIVE",
+      workshopId,
+    }).select("name email phone role"),
+    User.findOne({
+      role: "WORKSHOP_MANAGER",
+      status: "ACTIVE",
+      workshopId,
+    }).select("name email phone role"),
+  ]);
+
+  return {
+    ...booking.toObject(),
+    serviceAdvisorId: serviceAdvisor,
+    workshopManagerId: workshopManager,
+  };
 };
 
 const listBookingsService = async (user, query, workshopId) => {
@@ -251,8 +289,10 @@ const listBookingsService = async (user, query, workshopId) => {
     filter.customerId = user._id;
   }
 
-  if (workshopId) {
-    filter.workshopId = workshopId;
+  const scopedWorkshopId = await resolveScopedWorkshopId(user, workshopId);
+
+  if (scopedWorkshopId) {
+    filter.workshopId = scopedWorkshopId;
   }
 
   if (status) filter.status = status;
@@ -270,7 +310,7 @@ const listBookingsService = async (user, query, workshopId) => {
   const [bookings, total] = await Promise.all([
     Booking.find(filter)
       .populate("customerId", "name email phone")
-      .populate("vehicleId", "registrationNumber make model")
+      .populate("vehicleId", VEHICLE_SUMMARY_FIELDS)
       .populate("workshopId", "name code")
       .sort(sort)
       .skip((page - 1) * limit)
@@ -290,7 +330,9 @@ const listBookingsService = async (user, query, workshopId) => {
 };
 
 const updateBookingStatusService = async (bookingId, status, reason, user) => {
-  const booking = await getBookingByIdService(bookingId, user);
+  const booking = await loadBookingDoc(bookingId);
+
+  await assertBookingAccess(booking, user);
 
   validateStatusTransition(booking.status, status);
 
@@ -312,7 +354,9 @@ const updateBookingStatusService = async (bookingId, status, reason, user) => {
 };
 
 const updatePaymentStatusService = async (bookingId, paymentStatus, user) => {
-  const booking = await getBookingByIdService(bookingId, user);
+  const booking = await loadBookingDoc(bookingId);
+
+  await assertBookingAccess(booking, user);
 
   booking.paymentStatus = paymentStatus;
 

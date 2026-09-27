@@ -3,20 +3,27 @@ import { useParams, useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import {
   ArrowLeft,
+  Camera,
   Car,
   CheckCircle2,
   ClipboardCheck,
   ClipboardList,
   CreditCard,
   FileText,
+  Fuel,
   Gauge,
+  Hash,
+  ImageIcon,
   ListChecks,
+  Settings2,
   Star,
+  Tag,
   ThumbsDown,
   ThumbsUp,
   Truck,
   User,
   Wrench,
+  X,
 } from 'lucide-react'
 import AppNav from '../../components/AppNav'
 import StatusBadge from '../../components/StatusBadge'
@@ -27,11 +34,13 @@ import { getJob, getEstimate, respondToEstimate } from '../../services/jobApi'
 import { listJobTasks } from '../../services/jobTaskApi'
 import { listInspections } from '../../services/inspectionApi'
 import { listMyInvoices } from '../../services/invoiceApi'
+import { listJobMedia } from '../../services/mediaApi'
 import { createPaymentOrder, verifyPayment } from '../../services/paymentApi'
 import { openRazorpayCheckout, getRazorpayKeyId } from '../../services/razorpayCheckout'
 import { useAuth } from '../../contexts/authContext'
 import { formatDateTime } from '../../utils/transitions'
 import { getJobBackPath } from '../../utils/routes'
+import { formatEnum, getColorHex, vehicleModelLabel } from '../../utils/vehicle'
 import {
   ACCENT,
   ACCENT_HOVER,
@@ -70,7 +79,7 @@ const CONDITION_COLORS = {
 
 const rupees = (value) => `₹${(Number(value) || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`
 
-function InfoRow({ icon: Icon, label, value }) {
+function InfoRow({ icon: Icon, label, value, colorDot }) {
   return (
     <div className="flex items-start gap-3 py-2.5" style={{ borderBottom: `1px solid ${LINE_STRONG}` }}>
       <div
@@ -86,8 +95,15 @@ function InfoRow({ icon: Icon, label, value }) {
         >
           {label}
         </p>
-        <p className="text-sm mt-0.5 break-words" style={{ color: FOREGROUND }}>
+        <p className="text-sm mt-0.5 break-words flex items-center gap-2" style={{ color: FOREGROUND }}>
           {value || '—'}
+          {value && colorDot && (
+            <span
+              className="inline-block w-3.5 h-3.5 rounded-full shrink-0"
+              title={value}
+              style={{ background: colorDot, border: `1px solid ${LINE_STRONG}` }}
+            />
+          )}
         </p>
       </div>
     </div>
@@ -124,6 +140,9 @@ export default function JobDetailPage() {
   const [tasks, setTasks] = useState([])
   const [inspections, setInspections] = useState([])
   const [invoices, setInvoices] = useState([])
+  const [media, setMedia] = useState([])
+  const [mediaError, setMediaError] = useState('')
+  const [preview, setPreview] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
@@ -138,13 +157,15 @@ export default function JobDetailPage() {
 
   const load = async () => {
     setError('')
-    const [jobRes, estimateRes, taskRes, inspectionRes, invoiceRes] = await Promise.allSettled([
-      getJob(jobId),
-      getEstimate(jobId),
-      listJobTasks(jobId, { limit: 100 }),
-      listInspections({ jobId, limit: 50 }),
-      listMyInvoices({ jobId, limit: 50 }),
-    ])
+    const [jobRes, estimateRes, taskRes, inspectionRes, invoiceRes, mediaRes] =
+      await Promise.allSettled([
+        getJob(jobId),
+        getEstimate(jobId),
+        listJobTasks(jobId, { limit: 100 }),
+        listInspections({ jobId, limit: 50 }),
+        listMyInvoices({ jobId, limit: 50 }),
+        listJobMedia(jobId),
+      ])
 
     if (jobRes.status === 'fulfilled') {
       setJob(jobRes.value.data)
@@ -156,6 +177,13 @@ export default function JobDetailPage() {
     if (taskRes.status === 'fulfilled') setTasks(taskRes.value.data?.tasks || [])
     if (inspectionRes.status === 'fulfilled') setInspections(inspectionRes.value.data?.inspections || [])
     if (invoiceRes.status === 'fulfilled') setInvoices(invoiceRes.value.data?.invoices || [])
+    if (mediaRes.status === 'fulfilled') {
+      setMedia(mediaRes.value.data || [])
+      setMediaError('')
+    } else {
+      setMedia([])
+      setMediaError(mediaRes.reason?.message || 'Unable to load work photos')
+    }
   }
 
   useEffect(() => {
@@ -166,8 +194,9 @@ export default function JobDetailPage() {
       listJobTasks(jobId, { limit: 100 }),
       listInspections({ jobId, limit: 50 }),
       listMyInvoices({ jobId, limit: 50 }),
+      listJobMedia(jobId),
     ])
-      .then(([jobRes, estimateRes, taskRes, inspectionRes, invoiceRes]) => {
+      .then(([jobRes, estimateRes, taskRes, inspectionRes, invoiceRes, mediaRes]) => {
         if (cancelled) return
         if (jobRes.status === 'fulfilled') setJob(jobRes.value.data)
         else setError(jobRes.reason?.message || 'Unable to load this job')
@@ -175,6 +204,13 @@ export default function JobDetailPage() {
         if (taskRes.status === 'fulfilled') setTasks(taskRes.value.data?.tasks || [])
         if (inspectionRes.status === 'fulfilled') setInspections(inspectionRes.value.data?.inspections || [])
         if (invoiceRes.status === 'fulfilled') setInvoices(invoiceRes.value.data?.invoices || [])
+        if (mediaRes.status === 'fulfilled') {
+          setMedia(mediaRes.value.data || [])
+          setMediaError('')
+        } else {
+          setMedia([])
+          setMediaError(mediaRes.reason?.message || 'Unable to load work photos')
+        }
       })
       .finally(() => {
         if (!cancelled) setLoading(false)
@@ -300,6 +336,13 @@ export default function JobDetailPage() {
   const estimateTotal =
     estimate?.pricing?.total ?? subtotal - (estimate?.pricing?.discount || 0) + (estimate?.pricing?.tax || 0)
 
+  const vehicle = job.vehicleId
+  const beforePhotos = media.filter((m) => m.category === 'BEFORE')
+  const afterPhotos = media.filter((m) => m.category === 'AFTER')
+  const otherPhotos = media.filter(
+    (m) => m.category !== 'BEFORE' && m.category !== 'AFTER',
+  )
+
   return (
     <div className="min-h-screen" style={{ background: BACKGROUND, color: FOREGROUND }}>
       <AppNav />
@@ -407,6 +450,7 @@ export default function JobDetailPage() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <SectionCard icon={ClipboardList} title="Job Details">
             <InfoRow icon={User} label="Workshop" value={job.workshopId?.name} />
+            <InfoRow icon={User} label="Workshop Manager" value={job.workshopManagerId?.name} />
             <InfoRow icon={User} label="Service Advisor" value={job.serviceAdvisorId?.name} />
             <InfoRow
               icon={Wrench}
@@ -427,13 +471,30 @@ export default function JobDetailPage() {
           </SectionCard>
 
           <SectionCard icon={Car} title="Vehicle">
-            <InfoRow icon={Car} label="Registration" value={job.vehicleId?.registrationNumber} />
+            <InfoRow icon={Car} label="Registration" value={vehicle?.registrationNumber} />
+            <InfoRow icon={Car} label="Model" value={vehicleModelLabel(vehicle)} />
+            <InfoRow icon={Tag} label="Variant" value={vehicle?.variant} />
+            <InfoRow icon={Hash} label="VIN" value={vehicle?.vin} />
+            <InfoRow
+              icon={Gauge}
+              label="Manufacturing Year"
+              value={vehicle?.manufacturingYear ? String(vehicle.manufacturingYear) : null}
+            />
+            <InfoRow icon={Fuel} label="Fuel Type" value={formatEnum(vehicle?.fuelType)} />
+            <InfoRow icon={Settings2} label="Transmission" value={formatEnum(vehicle?.transmission)} />
             <InfoRow
               icon={Car}
-              label="Model"
-              value={job.vehicleId ? `${job.vehicleId.make || ''} ${job.vehicleId.model || ''}`.trim() : null}
+              label="Colour"
+              value={vehicle?.color}
+              colorDot={vehicle?.color ? getColorHex(vehicle.color) : null}
             />
-            <InfoRow icon={Car} label="Colour" value={job.vehicleId?.color} />
+            {vehicle?.odometer > 0 && (
+              <InfoRow
+                icon={Gauge}
+                label="Odometer"
+                value={`${Number(vehicle.odometer).toLocaleString('en-IN')} km`}
+              />
+            )}
             {job.customerNotes && (
               <div className="mt-4">
                 <p
@@ -447,6 +508,72 @@ export default function JobDetailPage() {
             )}
           </SectionCard>
         </div>
+
+        <SectionCard
+          icon={ImageIcon}
+          title={`Work Photos (${media.length})`}
+          action={
+            media.length > 0 ? (
+              <span className="inline-flex items-center gap-1.5 text-[11px] uppercase tracking-widest" style={{ color: MUTED }}>
+                <Camera size={12} />
+                Tap a photo to enlarge
+              </span>
+            ) : null
+          }
+        >
+          {mediaError ? (
+            <p className="text-sm" style={{ color: '#f87171' }}>{mediaError}</p>
+          ) : media.length === 0 ? (
+            <p className="text-sm" style={{ color: MUTED }}>
+              Photos of your vehicle before and after the detailing work will appear here once the
+              workshop uploads them.
+            </p>
+          ) : (
+            <div className="space-y-6">
+              {[
+                ['Before Work', beforePhotos],
+                ['After Work', afterPhotos],
+                ...(otherPhotos.length > 0 ? [['Other', otherPhotos]] : []),
+              ].map(([label, items]) => (
+                <div key={label}>
+                  <h3
+                    className="text-sm font-black uppercase tracking-widest mb-3"
+                    style={{ fontFamily: "'Barlow Condensed', sans-serif", letterSpacing: '0.1em' }}
+                  >
+                    {label} ({items.length})
+                  </h3>
+                  {items.length === 0 ? (
+                    <p className="text-xs" style={{ color: MUTED }}>No photos yet.</p>
+                  ) : (
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                      {items.map((m) => (
+                        <button
+                          key={m._id}
+                          type="button"
+                          onClick={() => setPreview(m)}
+                          className="relative cursor-zoom-in overflow-hidden"
+                          style={{ border: `1px solid ${LINE_STRONG}`, background: '#0e0e0e' }}
+                        >
+                          <img
+                            src={m.url}
+                            alt={`${m.category} photo`}
+                            className="w-full h-28 sm:h-32 object-cover"
+                          />
+                          <span
+                            className="absolute bottom-0 inset-x-0 px-2 py-1 text-left text-[10px] uppercase tracking-widest"
+                            style={{ background: 'rgba(12,12,12,0.8)', color: MUTED }}
+                          >
+                            {formatDateTime(m.createdAt)}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </SectionCard>
 
         <SectionCard
           icon={FileText}
@@ -835,6 +962,37 @@ export default function JobDetailPage() {
           </div>
         </div>
       </Modal>
+
+      {preview && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ background: 'rgba(6,6,6,0.94)' }}
+          onClick={() => setPreview(null)}
+        >
+          <button
+            type="button"
+            onClick={() => setPreview(null)}
+            className="absolute top-4 right-4 p-2 cursor-pointer"
+            style={{ background: 'transparent', border: `1px solid ${LINE_STRONG}`, color: FOREGROUND }}
+            aria-label="Close photo"
+          >
+            <X size={18} />
+          </button>
+          <figure className="max-w-4xl w-full" onClick={(e) => e.stopPropagation()}>
+            <img
+              src={preview.url}
+              alt={`${preview.category} photo`}
+              className="w-full max-h-[80vh] object-contain"
+            />
+            <figcaption
+              className="mt-3 text-xs uppercase tracking-widest text-center"
+              style={{ color: MUTED, fontFamily: "'Barlow Condensed', sans-serif" }}
+            >
+              {String(preview.category || '').replace(/_/g, ' ')} · {formatDateTime(preview.createdAt)}
+            </figcaption>
+          </figure>
+        </div>
+      )}
     </div>
   )
 }

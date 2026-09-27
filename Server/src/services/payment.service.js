@@ -35,10 +35,15 @@ const PAYMENT_POPULATE = [
 
 const getIdString = (value) => {
   if (value === null || value === undefined) return "";
-  if (typeof value === "object") {
-    return getIdString(value._id || value.id || "");
+  if (typeof value !== "object") return String(value);
+  if (typeof value.toHexString === "function") return value.toHexString();
+  if (value._id !== null && value._id !== undefined) return getIdString(value._id);
+  if (value.id !== null && value.id !== undefined) return getIdString(value.id);
+  if (typeof value.toString === "function") {
+    const text = value.toString();
+    if (text && text !== "[object Object]") return text;
   }
-  return String(value);
+  return "";
 };
 
 const idsEqual = (first, second) => {

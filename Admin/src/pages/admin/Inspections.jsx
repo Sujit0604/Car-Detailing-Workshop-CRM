@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
-import { ClipboardCheck, Plus, Pencil, CheckCircle2, Eye, Trash2 } from 'lucide-react'
+import { ClipboardCheck, Plus, Pencil, CheckCircle2, Eye, Trash2, Search } from 'lucide-react'
 import AdminNav from '../../components/AdminNav'
 import StatusBadge from '../../components/StatusBadge'
 import Spinner from '../../components/Spinner'
@@ -8,6 +8,7 @@ import EmptyState from '../../components/EmptyState'
 import Modal from '../../components/Modal'
 import { SelectInput, TextInput, TextArea } from '../../components/Field'
 import { listInspections, createInspection, updateInspection, completeInspection } from '../../services/inspectionApi'
+import { listAllJobs } from '../../services/adminApi'
 import { formatDateTime } from '../../utils/transitions'
 import {
   ACCENT,
@@ -26,6 +27,9 @@ const INSPECTION_TYPES = ['INITIAL', 'FINAL', 'REINSPECTION']
 const CONDITIONS = ['GOOD', 'FAIR', 'POOR', 'DAMAGED', 'REPLACE_REQUIRED']
 const TYPE_FILTERS = ['ALL', ...INSPECTION_TYPES]
 const STATUS_FILTERS = ['ALL', 'DRAFT', 'COMPLETED']
+// These are the statuses an inspection actually advances the job from, so they
+// are listed first in the picker. The list is never limited to them.
+const INSPECTABLE_STATUSES = ['INSPECTION', 'REWORK', 'ESTIMATE_PENDING']
 
 const EMPTY_FORM = {
   jobId: '',
@@ -53,6 +57,9 @@ export default function Inspections() {
   const [editing, setEditing] = useState(null)
   const [form, setForm] = useState(EMPTY_FORM)
   const [detail, setDetail] = useState(null)
+  const [jobs, setJobs] = useState([])
+  const [jobsLoaded, setJobsLoaded] = useState(false)
+  const [jobQuery, setJobQuery] = useState('')
 
   useEffect(() => {
     const params = { page, limit: 15, sortBy: 'createdAt', sortOrder: 'desc' }
@@ -84,16 +91,96 @@ export default function Inspections() {
     setLoading(true)
   }
 
+  // Jobs are only needed to populate the "New Inspection" picker, so they are
+  // fetched lazily the first time the modal is opened.
+  useEffect(() => {
+    if (!modalOpen || jobsLoaded) return
+
+    let cancelled = false
+
+    listAllJobs({ page: 1, limit: 100, sortBy: 'createdAt', sortOrder: 'desc' })
+      .then((res) => {
+        if (cancelled) return
+        setJobs(res.data?.jobs || [])
+        setJobsLoaded(true)
+      })
+      .catch((err) => {
+        if (cancelled) return
+        toast.error(err.message)
+        setJobsLoaded(true)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [modalOpen, jobsLoaded])
+
+  const jobsLoading = modalOpen && !jobsLoaded
+  const formJobId = (form.jobId || '').trim()
+
+  // Matches whatever the admin typed against the fetched job list, so both a
+  // job number and an ObjectId resolve to the same highlighted job.
+  const selectedJob = useMemo(() => {
+    const term = (form.jobId || '').trim().toLowerCase()
+    if (!term) return null
+    return (
+      jobs.find(
+        (job) =>
+          job._id?.toLowerCase() === term ||
+          job.jobNumber?.toLowerCase() === term,
+      ) || null
+    )
+  }, [form.jobId, jobs])
+
+  // Every job stays selectable: the server resolves any job number, and a job can
+  // be inspected from more than one status. Inspectable jobs are only sorted to
+  // the top, never filtered out.
+  const selectableJobs = useMemo(() => {
+    const needle = jobQuery.trim().toLowerCase()
+
+    const matches = needle
+      ? jobs.filter((job) =>
+          [
+            job.jobNumber,
+            job._id,
+            job.status,
+            job.customerId?.name,
+            job.customerId?.phone,
+            job.vehicleId?.registrationNumber,
+            job.vehicleId?.make,
+            job.vehicleId?.model,
+          ]
+            .filter(Boolean)
+            .some((field) => field.toLowerCase().includes(needle)),
+        )
+      : jobs
+
+    const rank = (job) => (INSPECTABLE_STATUSES.includes(job.status) ? 0 : 1)
+
+    return [...matches].sort(
+      (a, b) => rank(a) - rank(b) || (a.jobNumber < b.jobNumber ? 1 : -1),
+    )
+  }, [jobs, jobQuery])
+
+  const selectJob = (jobId) => {
+    const job = jobs.find((item) => item._id === jobId)
+    setForm((s) => ({ ...s, jobId: job ? job.jobNumber || job._id : '' }))
+  }
+
   const openAdd = () => {
     setEditing(null)
     setForm({ ...EMPTY_FORM, items: [] })
+    setJobQuery('')
     setModalOpen(true)
   }
 
   const openEdit = (inspection) => {
     setEditing(inspection)
     setForm({
-      jobId: '',
+      jobId:
+        typeof inspection.jobId === 'string'
+          ? inspection.jobId
+          : inspection.jobId?.jobNumber || inspection.jobId?._id || '',
       inspectionType: inspection.inspectionType || 'INITIAL',
       odometerReading: inspection.odometerReading ?? '',
       fuelLevel: inspection.fuelLevel ?? '',
@@ -139,8 +226,10 @@ export default function Inspections() {
 
   const handleSubmit = async (e) => {
     e.preventDefault()
-    if (!editing && !form.jobId.trim()) {
-      toast.error('Job id is required')
+    const jobId = (form.jobId || '').trim()
+
+    if (!editing && !jobId) {
+      toast.error('Select a job, or type its job number')
       return
     }
 
@@ -160,7 +249,7 @@ export default function Inspections() {
         await updateInspection(editing._id, payload)
         toast.success('Inspection updated')
       } else {
-        await createInspection({ ...payload, jobId: form.jobId.trim() })
+        await createInspection({ ...payload, jobId })
         toast.success('Inspection created')
       }
       setModalOpen(false)
@@ -396,13 +485,97 @@ export default function Inspections() {
         <form onSubmit={handleSubmit} className="space-y-4" noValidate>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             {!editing && (
-              <TextInput
-                label="Job Id"
-                required
-                value={form.jobId}
-                onChange={updateField('jobId')}
-                placeholder="Job ObjectId"
-              />
+              <div className="sm:col-span-3 space-y-3">
+                <div
+                  className="flex items-center gap-2 px-3"
+                  style={{ border: `1px solid ${LINE_STRONG}`, background: PANEL_ACTIVE }}
+                >
+                  <Search size={14} style={{ color: MUTED, flexShrink: 0 }} />
+                  <input
+                    type="text"
+                    value={jobQuery}
+                    onChange={(e) => setJobQuery(e.target.value)}
+                    placeholder="Search jobs by number, customer, registration or status"
+                    className="w-full bg-transparent py-2.5 text-sm outline-none"
+                    style={{ color: FOREGROUND }}
+                  />
+                  {jobQuery && (
+                    <button
+                      type="button"
+                      onClick={() => setJobQuery('')}
+                      aria-label="Clear search"
+                      className="text-xs font-black uppercase tracking-widest cursor-pointer"
+                      style={{ color: MUTED }}
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
+
+                <SelectInput
+                  label={`Job${jobQuery ? ` (${selectableJobs.length} match${selectableJobs.length === 1 ? '' : 'es'})` : ` (${jobs.length} total)`}`}
+                  value={selectedJob?._id || ''}
+                  onChange={(e) => selectJob(e.target.value)}
+                  placeholder={jobsLoading ? 'Loading jobs...' : 'Select a job to inspect'}
+                  disabled={jobsLoading}
+                >
+                  {selectableJobs.map((job) => (
+                    <option key={job._id} value={job._id} style={{ background: PANEL }}>
+                      {INSPECTABLE_STATUSES.includes(job.status) ? '' : '· '}
+                      {job.jobNumber} · {job.customerId?.name || 'Unknown'} ·{' '}
+                      {job.vehicleId?.registrationNumber || 'No reg'} · {job.status}
+                    </option>
+                  ))}
+                </SelectInput>
+
+                <TextInput
+                  label="Job Number or Id"
+                  required
+                  value={form.jobId}
+                  onChange={updateField('jobId')}
+                  placeholder="JOB-2026-AB12CD34"
+                  list="inspection-job-options"
+                />
+                <datalist id="inspection-job-options">
+                  {jobs.map((job) => (
+                    <option key={job._id} value={job.jobNumber}>
+                      {job.customerId?.name} · {job.vehicleId?.registrationNumber}
+                    </option>
+                  ))}
+                </datalist>
+
+                {selectedJob && (
+                  <div
+                    className="flex items-start gap-2 text-xs"
+                    style={{ border: `1px solid ${LINE_STRONG}`, background: PANEL_ACTIVE, padding: '0.75rem' }}
+                  >
+                    <CheckCircle2 size={14} style={{ color: '#10b981', flexShrink: 0, marginTop: 1 }} />
+                    <span style={{ color: MUTED }}>
+                      {selectedJob.jobNumber} · {selectedJob.customerId?.name} ·{' '}
+                      {selectedJob.vehicleId?.registrationNumber} · status {selectedJob.status}
+                    </span>
+                  </div>
+                )}
+
+                {formJobId && !selectedJob && jobsLoaded && (
+                  <p className="text-xs" style={{ color: '#f59e0b' }}>
+                    That job is not in the loaded list (only the 100 most recent are cached), but
+                    you can still create the inspection — the server looks the job up by its number.
+                  </p>
+                )}
+
+                {jobsLoaded && selectableJobs.length === 0 && (
+                  <p className="text-xs" style={{ color: '#f59e0b' }}>
+                    No job matches that search. Clear the search box, or type the job number
+                    directly below.
+                  </p>
+                )}
+
+                <p className="text-xs" style={{ color: MUTED }}>
+                  Every job is listed here. Prefer to work from the job itself? Open the job and use
+                  its inspection section — it fills this in automatically.
+                </p>
+              </div>
             )}
             <SelectInput
               label="Inspection Type"

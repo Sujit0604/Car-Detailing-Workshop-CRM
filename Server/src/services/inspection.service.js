@@ -1,8 +1,24 @@
 const ApiError = require("../utils/ApiError.js");
 const logger = require("../utils/logger.js");
+const mongoose = require("mongoose");
 const Inspection = require("../models/Inspection.js");
 const Job = require("../models/Job.js");
 const Mechanic = require("../models/Mechanic.js");
+
+// Staff paste whatever is on their screen: a job ObjectId or a job number
+// (JOB-2026-AB12CD34). Accept both.
+const resolveJob = async (identifier) => {
+  const value = String(identifier || "").trim();
+
+  if (!value) return null;
+
+  if (mongoose.Types.ObjectId.isValid(value)) {
+    return Job.findById(value);
+  }
+
+  const escaped = value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return Job.findOne({ jobNumber: new RegExp(`^${escaped}$`, "i") });
+};
 
 const populateInspection = async (inspection) => {
   return inspection.populate("jobId", "jobNumber status workshopId customerId");
@@ -62,12 +78,14 @@ const assertJobAccess = async (job, user) => {
 const createInspectionService = async (data, user) => {
   assertStaffAccess(user);
 
-  const job = await Job.findById(data.jobId);
+  const job = await resolveJob(data.jobId);
 
   await assertJobAccess(job, user);
 
   const inspection = await Inspection.create({
     ...data,
+    // Always store the resolved ObjectId, never the job number the user typed.
+    jobId: job._id,
     inspectorId: user._id,
   });
 
@@ -101,9 +119,16 @@ const listInspectionsService = async (user, query) => {
     sortOrder = "desc",
   } = query;
   const jobFilter = {};
+  let resolvedJobId = null;
 
   if (jobId) {
-    jobFilter._id = jobId;
+    const requestedJob = await resolveJob(jobId);
+
+    if (!requestedJob) {
+      throw new ApiError(404, "Job not found");
+    }
+
+    resolvedJobId = requestedJob._id;
   }
 
   if (user.role === "CUSTOMER") {
@@ -115,7 +140,7 @@ const listInspectionsService = async (user, query) => {
   const jobs = await Job.find(jobFilter).select("_id");
   const filter = {};
 
-  filter.jobId = jobId ? jobId : { $in: jobs.map((job) => job._id) };
+  filter.jobId = resolvedJobId ? resolvedJobId : { $in: jobs.map((job) => job._id) };
 
   if (inspectionType) filter.inspectionType = inspectionType;
   if (status) filter.status = status;

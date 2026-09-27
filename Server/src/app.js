@@ -54,7 +54,7 @@ app.use(
     cors()
 );
 
-app.use(apiLimiter);
+// app.use(apiLimiter);
 
 // Razorpay signs the untouched request payload, so its webhook router must run
 // before express.json() consumes the body.

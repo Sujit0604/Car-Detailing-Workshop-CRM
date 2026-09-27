@@ -58,8 +58,30 @@ const assertRelatedIdsMatch = (job, booking, vehicle) => {
   }
 };
 
+// Admins paste whatever is on their screen: a job ObjectId or a job number
+// (JOB-2026-AB12CD34). Accept both.
+const resolveJob = async (identifier) => {
+  const value = String(identifier || "").trim();
+
+  if (!value) return null;
+
+  if (mongoose.Types.ObjectId.isValid(value)) {
+    return Job.findById(value);
+  }
+
+  const escaped = value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return Job.findOne({ jobNumber: new RegExp(`^${escaped}$`, "i") });
+};
+
 const findApprovedEstimate = async (jobId, estimateId) => {
-  if (estimateId && !mongoose.Types.ObjectId.isValid(estimateId)) return null;
+  if (estimateId && !mongoose.Types.ObjectId.isValid(estimateId)) {
+    const escaped = estimateId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    return Estimate.findOne({
+      jobId,
+      status: "APPROVED",
+      estimateNumber: new RegExp(`^${escaped}$`, "i"),
+    });
+  }
 
   const filter = {
     jobId,
@@ -127,6 +149,7 @@ const buildInvoicePricing = (items, estimatePricing = {}) => {
 const populateInvoice = (query) => {
   return query
     .populate("estimateId", "estimateNumber version status")
+    .populate("jobId", "jobNumber status")
     .populate("bookingId", "bookingNumber status paymentStatus")
     .populate("customerId", "name email phone")
     .populate("workshopId", "name code address")
@@ -206,11 +229,7 @@ const addPaymentSummaries = async (invoices) => {
 };
 
 const generateInvoiceService = async (payload, user) => {
-  if (!mongoose.Types.ObjectId.isValid(payload.jobId)) {
-    throw new ApiError(404, "Job not found");
-  }
-
-  const job = await Job.findById(payload.jobId);
+  const job = await resolveJob(payload.jobId);
 
   if (!job) {
     throw new ApiError(404, "Job not found");

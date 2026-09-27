@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react'
+import { Fragment, useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import {
   ArrowLeft,
   CheckCircle2,
+  ChevronDown,
   User,
   Truck,
   Gauge,
@@ -16,6 +17,11 @@ import {
   ListChecks,
   Package,
   Plus,
+  Car,
+  Fuel,
+  Hash,
+  Settings2,
+  Tag,
 } from 'lucide-react'
 import AdminNav from '../../components/AdminNav'
 import StatusBadge from '../../components/StatusBadge'
@@ -30,6 +36,7 @@ import { listJobTasks, createJobTask, updateJobTaskStatus, deleteJobTask } from 
 import { listJobParts, createJobPart, updateJobPartStatus, deleteJobPart } from '../../services/jobPartApi'
 import { listInventoryParts } from '../../services/inventoryApi'
 import { formatDateTime, JOB_TASK_NEXT_STATUS, JOB_PART_NEXT_STATUS } from '../../utils/transitions'
+import { formatEnum, getColorHex, vehicleModelLabel } from '../../utils/vehicle'
 import {
   ACCENT,
   BACKGROUND,
@@ -59,6 +66,15 @@ const PIPELINE = [
 
 const TASK_TYPES = ['REPAIR', 'DETAILING', 'INSPECTION', 'MAINTENANCE']
 const INSPECTION_TYPES = ['INITIAL', 'FINAL', 'REINSPECTION']
+const ITEM_CONDITIONS = ['GOOD', 'FAIR', 'POOR', 'DAMAGED', 'REPLACE_REQUIRED']
+
+const CONDITION_COLORS = {
+  GOOD: '#10b981',
+  FAIR: '#f59e0b',
+  POOR: '#fb923c',
+  DAMAGED: '#f87171',
+  REPLACE_REQUIRED: '#ef4444',
+}
 
 const EMPTY_INSPECTION_FORM = {
   inspectionType: 'INITIAL',
@@ -67,14 +83,17 @@ const EMPTY_INSPECTION_FORM = {
   exteriorCondition: '',
   interiorCondition: '',
   notes: '',
+  markComplete: false,
 }
+
+const EMPTY_INSPECTION_ITEM = { component: '', condition: 'GOOD', notes: '', recommendedAction: '' }
 
 const EMPTY_TASK_FORM = { title: '', taskType: 'REPAIR', estimatedMinutes: '', description: '' }
 
 const EMPTY_PART_FORM = { inventoryPartId: '', quantity: '1' }
 
 
-function InfoRow({ icon: Icon, label, value }) {
+function InfoRow({ icon: Icon, label, value, colorDot, sub }) {
   return (
     <div className="flex items-start gap-3 py-2.5" style={{ borderBottom: `1px solid ${LINE_STRONG}` }}>
       <div
@@ -87,9 +106,19 @@ function InfoRow({ icon: Icon, label, value }) {
         <p className="text-xs uppercase tracking-widest" style={{ color: MUTED, fontFamily: "'Barlow Condensed', sans-serif" }}>
           {label}
         </p>
-        <p className="text-sm mt-0.5 break-words" style={{ color: FOREGROUND }}>
+        <p className="text-sm mt-0.5 break-words flex items-center gap-2" style={{ color: FOREGROUND }}>
           {value || '—'}
+          {value && colorDot && (
+            <span
+              className="inline-block w-3.5 h-3.5 rounded-full shrink-0"
+              title={value}
+              style={{ background: colorDot, border: `1px solid ${LINE_STRONG}` }}
+            />
+          )}
         </p>
+        {value && sub && (
+          <p className="text-xs mt-0.5 break-words" style={{ color: MUTED }}>{sub}</p>
+        )}
       </div>
     </div>
   )
@@ -146,6 +175,8 @@ export default function JobDetailPage() {
 
   const [inspectionOpen, setInspectionOpen] = useState(false)
   const [inspectionForm, setInspectionForm] = useState(EMPTY_INSPECTION_FORM)
+  const [inspectionItems, setInspectionItems] = useState([{ ...EMPTY_INSPECTION_ITEM }])
+  const [expandedInspection, setExpandedInspection] = useState(null)
 
   const [taskOpen, setTaskOpen] = useState(false)
   const [taskForm, setTaskForm] = useState(EMPTY_TASK_FORM)
@@ -214,14 +245,38 @@ export default function JobDetailPage() {
 
   const openInspection = () => {
     setInspectionForm(EMPTY_INSPECTION_FORM)
+    setInspectionItems([{ ...EMPTY_INSPECTION_ITEM }])
     setInspectionOpen(true)
+  }
+
+  const updateInspectionItem = (index, key) => (e) => {
+    setInspectionItems((items) =>
+      items.map((item, i) => (i === index ? { ...item, [key]: e.target.value } : item)),
+    )
+  }
+
+  const addInspectionItem = () => {
+    setInspectionItems((items) => [...items, { ...EMPTY_INSPECTION_ITEM }])
+  }
+
+  const removeInspectionItem = (index) => {
+    setInspectionItems((items) => items.filter((_, i) => i !== index))
   }
 
   const handleInspection = async (e) => {
     e.preventDefault()
+    const items = inspectionItems
+      .filter((item) => item.component?.trim())
+      .map((item) => ({
+        component: item.component.trim(),
+        condition: item.condition,
+        notes: item.notes?.trim() || undefined,
+        recommendedAction: item.recommendedAction?.trim() || undefined,
+      }))
+
     setWorkSubmitting(true)
     try {
-      await createInspection({
+      const res = await createInspection({
         jobId,
         inspectionType: inspectionForm.inspectionType,
         odometerReading: inspectionForm.odometerReading !== '' ? Number(inspectionForm.odometerReading) : undefined,
@@ -229,8 +284,14 @@ export default function JobDetailPage() {
         exteriorCondition: inspectionForm.exteriorCondition.trim() || undefined,
         interiorCondition: inspectionForm.interiorCondition.trim() || undefined,
         notes: inspectionForm.notes.trim() || undefined,
+        items,
       })
-      toast.success('Inspection created')
+      if (inspectionForm.markComplete) {
+        await completeInspection(res.data._id)
+        toast.success('Inspection completed')
+      } else {
+        toast.success('Inspection draft saved')
+      }
       setInspectionOpen(false)
       reloadWorkData()
     } catch (err) {
@@ -598,8 +659,8 @@ export default function JobDetailPage() {
             <InfoRow icon={User} label="Contact" value={job.customerId?.phone} />
             <InfoRow icon={ClipboardList} label="Booking" value={job.bookingId?.bookingNumber} />
             <InfoRow icon={ClipboardList} label="Workshop" value={job.workshopId?.name} />
-            <InfoRow icon={User} label="Service Advisor" value={job.serviceAdvisorId?.name} />
-            <InfoRow icon={User} label="Workshop Manager" value={job.workshopManagerId?.name} />
+            <InfoRow icon={User} label="Workshop Manager" value={job.workshopManagerId?.name} sub={[job.workshopManagerId?.phone, job.workshopManagerId?.email].filter(Boolean).join(' · ')} />
+            <InfoRow icon={User} label="Service Advisor" value={job.serviceAdvisorId?.name} sub={[job.serviceAdvisorId?.phone, job.serviceAdvisorId?.email].filter(Boolean).join(' · ')} />
             <InfoRow icon={User} label="Assigned Mechanic" value={job.assignedMechanicId ? (job.assignedMechanicId.userId?.name ? `${job.assignedMechanicId.employeeCode} (${job.assignedMechanicId.userId.name})` : (job.assignedMechanicId.employeeCode || 'Mechanic')) : 'Unassigned'} />
             <InfoRow icon={Gauge} label="Odometer In" value={job.odometerIn ? `${job.odometerIn.toLocaleString()} km` : null} />
             <InfoRow icon={Gauge} label="Odometer Out" value={job.odometerOut ? `${job.odometerOut.toLocaleString()} km` : null} />
@@ -619,8 +680,29 @@ export default function JobDetailPage() {
                 Vehicle
               </h2>
               <InfoRow icon={ClipboardList} label="Registration" value={job.vehicleId?.registrationNumber} />
-              <InfoRow icon={ClipboardList} label="Model" value={job.vehicleId ? `${job.vehicleId.make} ${job.vehicleId.model}` : null} />
-              <InfoRow icon={ClipboardList} label="Colour" value={job.vehicleId?.color} />
+              <InfoRow icon={Car} label="Model" value={vehicleModelLabel(job.vehicleId)} />
+              <InfoRow icon={Tag} label="Variant" value={job.vehicleId?.variant} />
+              <InfoRow icon={Hash} label="VIN" value={job.vehicleId?.vin} />
+              <InfoRow
+                icon={Gauge}
+                label="Manufacturing Year"
+                value={job.vehicleId?.manufacturingYear ? String(job.vehicleId.manufacturingYear) : null}
+              />
+              <InfoRow icon={Fuel} label="Fuel Type" value={formatEnum(job.vehicleId?.fuelType)} />
+              <InfoRow icon={Settings2} label="Transmission" value={formatEnum(job.vehicleId?.transmission)} />
+              <InfoRow
+                icon={Car}
+                label="Colour"
+                value={job.vehicleId?.color}
+                colorDot={job.vehicleId?.color ? getColorHex(job.vehicleId.color) : null}
+              />
+              {job.vehicleId?.odometer > 0 && (
+                <InfoRow
+                  icon={Gauge}
+                  label="Odometer"
+                  value={`${Number(job.vehicleId.odometer).toLocaleString('en-IN')} km`}
+                />
+              )}
             </section>
 
             {job.customerNotes && (
@@ -661,6 +743,48 @@ export default function JobDetailPage() {
             </h2>
             {estimate && <StatusBadge status={estimate.status} />}
           </div>
+
+          {estimate && (
+            <div
+              className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4"
+              style={{ border: `1px solid ${LINE_STRONG}`, background: PANEL_ACTIVE, padding: '0.75rem 1rem' }}
+            >
+              <div className="text-xs space-y-0.5">
+                <p style={{ color: MUTED, fontFamily: "'Barlow Condensed', sans-serif" }}>
+                  ESTIMATE NUMBER
+                </p>
+                <p className="font-black" style={{ color: FOREGROUND }}>
+                  {estimate.estimateNumber}
+                  {estimate.version ? ` · v${estimate.version}` : ''}
+                </p>
+                <p className="break-all" style={{ color: MUTED }}>
+                  Id: {estimate._id}
+                </p>
+              </div>
+              <button
+                type="button"
+                disabled={estimate.status !== 'APPROVED'}
+                title={
+                  estimate.status === 'APPROVED'
+                    ? 'Generate the invoice for this job'
+                    : 'Only approved estimates can be invoiced'
+                }
+                onClick={() =>
+                  navigate(
+                    `/invoices?new=1&jobId=${encodeURIComponent(job.jobNumber || job._id)}` +
+                      `&estimateId=${encodeURIComponent(estimate.estimateNumber || estimate._id)}`,
+                  )
+                }
+                className="inline-flex items-center gap-2 px-4 py-2.5 text-[11px] font-black uppercase tracking-widest transition-all duration-200 cursor-pointer self-start disabled:opacity-40 disabled:cursor-not-allowed"
+                style={primaryButtonStyle}
+                onMouseEnter={(e) => (e.currentTarget.style.opacity = '0.85')}
+                onMouseLeave={(e) => (e.currentTarget.style.opacity = '1')}
+              >
+                <FileText size={13} />
+                {estimate.status === 'APPROVED' ? 'Generate Invoice' : 'Approval Required'}
+              </button>
+            </div>
+          )}
 
           {!estimate ? (
             <p className="text-sm" style={{ color: MUTED }}>
@@ -763,35 +887,76 @@ export default function JobDetailPage() {
                 </thead>
                 <tbody>
                   {inspections.map((ins) => (
-                    <tr key={ins._id} style={{ borderBottom: `1px solid ${LINE_STRONG}` }}>
-                      <td className="px-4 py-2.5 text-sm" style={{ color: FOREGROUND }}>{ins.inspectionType}</td>
-                      <td className="px-4 py-2.5 text-sm" style={{ color: MUTED }}>{ins.inspectorId?.name || '—'}</td>
-                      <td className="px-4 py-2.5 text-sm" style={{ color: MUTED }}>
-                        {ins.odometerReading != null ? `${ins.odometerReading.toLocaleString('en-IN')} km` : '—'}
-                      </td>
-                      <td className="px-4 py-2.5 text-sm" style={{ color: MUTED }}>
-                        {ins.fuelLevel != null ? `${ins.fuelLevel}%` : '—'}
-                      </td>
-                      <td className="px-4 py-2.5 text-sm" style={{ color: MUTED }}>{ins.items?.length || 0}</td>
-                      <td className="px-4 py-2.5"><StatusBadge status={ins.status} /></td>
-                      <td className="px-4 py-2.5 text-xs whitespace-nowrap" style={{ color: MUTED }}>
-                        {formatDateTime(ins.createdAt)}
-                      </td>
-                      <td className="px-4 py-2.5">
-                        <button
-                          type="button"
-                          onClick={() => handleCompleteInspection(ins)}
-                          disabled={ins.status === 'COMPLETED' || workSubmitting}
-                          className="inline-flex items-center gap-1 px-3 py-1.5 text-[10px] font-black uppercase tracking-widest transition-colors duration-200 cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
-                          style={ghostButtonStyle}
-                          onMouseEnter={(e) => { if (!e.currentTarget.disabled) e.currentTarget.style.borderColor = ACCENT; if (!e.currentTarget.disabled) e.currentTarget.style.color = ACCENT }}
-                          onMouseLeave={(e) => { e.currentTarget.style.borderColor = LINE_STRONG; e.currentTarget.style.color = '#8a8580' }}
-                        >
-                          <CheckCircle2 size={11} />
-                          Complete
-                        </button>
-                      </td>
-                    </tr>
+                    <Fragment key={ins._id}>
+                      <tr style={{ borderBottom: `1px solid ${LINE_STRONG}` }}>
+                        <td className="px-4 py-2.5 text-sm" style={{ color: FOREGROUND }}>{ins.inspectionType}</td>
+                        <td className="px-4 py-2.5 text-sm" style={{ color: MUTED }}>{ins.inspectorId?.name || '—'}</td>
+                        <td className="px-4 py-2.5 text-sm" style={{ color: MUTED }}>
+                          {ins.odometerReading != null ? `${ins.odometerReading.toLocaleString('en-IN')} km` : '—'}
+                        </td>
+                        <td className="px-4 py-2.5 text-sm" style={{ color: MUTED }}>
+                          {ins.fuelLevel != null ? `${ins.fuelLevel}%` : '—'}
+                        </td>
+                        <td className="px-4 py-2.5 text-sm" style={{ color: MUTED }}>
+                          {ins.items?.length > 0 ? (
+                            <button
+                              type="button"
+                              onClick={() => setExpandedInspection((prev) => (prev === ins._id ? null : ins._id))}
+                              className="inline-flex items-center gap-1.5 cursor-pointer transition-colors duration-200"
+                              style={{ color: ACCENT }}
+                            >
+                              {ins.items.length}
+                              <ChevronDown
+                                size={12}
+                                style={{ transform: expandedInspection === ins._id ? 'rotate(180deg)' : 'none' }}
+                              />
+                            </button>
+                          ) : (
+                            0
+                          )}
+                        </td>
+                        <td className="px-4 py-2.5"><StatusBadge status={ins.status} /></td>
+                        <td className="px-4 py-2.5 text-xs whitespace-nowrap" style={{ color: MUTED }}>
+                          {formatDateTime(ins.createdAt)}
+                        </td>
+                        <td className="px-4 py-2.5">
+                          <button
+                            type="button"
+                            onClick={() => handleCompleteInspection(ins)}
+                            disabled={ins.status === 'COMPLETED' || workSubmitting}
+                            className="inline-flex items-center gap-1 px-3 py-1.5 text-[10px] font-black uppercase tracking-widest transition-colors duration-200 cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
+                            style={ghostButtonStyle}
+                            onMouseEnter={(e) => { if (!e.currentTarget.disabled) e.currentTarget.style.borderColor = ACCENT; if (!e.currentTarget.disabled) e.currentTarget.style.color = ACCENT }}
+                            onMouseLeave={(e) => { e.currentTarget.style.borderColor = LINE_STRONG; e.currentTarget.style.color = '#8a8580' }}
+                          >
+                            <CheckCircle2 size={11} />
+                            Complete
+                          </button>
+                        </td>
+                      </tr>
+                      {expandedInspection === ins._id && ins.items?.length > 0 && (
+                        <tr style={{ borderBottom: `1px solid ${LINE_STRONG}` }}>
+                          <td colSpan={8} className="px-4 py-3" style={{ background: PANEL_ACTIVE }}>
+                            <div className="space-y-1.5">
+                              {ins.items.map((item, i) => (
+                                <div key={i} className="flex items-start gap-3 text-xs">
+                                  <span
+                                    className="inline-block w-2 h-2 rounded-full shrink-0 mt-1"
+                                    style={{ background: CONDITION_COLORS[item.condition] || MUTED }}
+                                  />
+                                  <span className="font-bold" style={{ color: FOREGROUND }}>{item.component}</span>
+                                  <span style={{ color: MUTED }}>{formatEnum(item.condition)}</span>
+                                  {item.recommendedAction && (
+                                    <span style={{ color: MUTED }}>Action: {item.recommendedAction}</span>
+                                  )}
+                                  {item.notes && <span style={{ color: MUTED }}>{item.notes}</span>}
+                                </div>
+                              ))}
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
                   ))}
                 </tbody>
               </table>
@@ -1063,18 +1228,97 @@ export default function JobDetailPage() {
               onChange={(e) => setInspectionForm((s) => ({ ...s, interiorCondition: e.target.value }))}
             />
           </div>
+
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs uppercase tracking-widest" style={{ color: MUTED, letterSpacing: '0.14em' }}>
+                Checklist
+              </p>
+              <button
+                type="button"
+                onClick={addInspectionItem}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-black uppercase tracking-widest cursor-pointer"
+                style={ghostButtonStyle}
+              >
+                <Plus size={12} />
+                Add Item
+              </button>
+            </div>
+
+            <div className="space-y-2 max-h-[28vh] overflow-y-auto pr-1">
+              {inspectionItems.map((item, index) => (
+                <div
+                  key={index}
+                  className="grid grid-cols-12 gap-2 items-end p-3"
+                  style={{ border: `1px solid ${LINE_STRONG}`, background: PANEL_ACTIVE }}
+                >
+                  <div className="col-span-4">
+                    <TextInput
+                      label="Component"
+                      required
+                      value={item.component}
+                      onChange={updateInspectionItem(index, 'component')}
+                      placeholder="Front bumper"
+                    />
+                  </div>
+                  <div className="col-span-3">
+                    <SelectInput
+                      label="Condition"
+                      value={item.condition}
+                      onChange={updateInspectionItem(index, 'condition')}
+                    >
+                      {ITEM_CONDITIONS.map((condition) => (
+                        <option key={condition} value={condition} style={{ background: PANEL }}>
+                          {condition.replace(/_/g, ' ')}
+                        </option>
+                      ))}
+                    </SelectInput>
+                  </div>
+                  <div className="col-span-4">
+                    <TextInput
+                      label="Recommended Action"
+                      value={item.recommendedAction}
+                      onChange={updateInspectionItem(index, 'recommendedAction')}
+                      placeholder="Replace"
+                    />
+                  </div>
+                  <div className="col-span-1 flex justify-end">
+                    <button
+                      type="button"
+                      onClick={() => removeInspectionItem(index)}
+                      disabled={inspectionItems.length === 1}
+                      className="p-2 cursor-pointer disabled:opacity-30"
+                      style={{ color: MUTED, background: 'transparent', border: 'none' }}
+                      aria-label="Remove checklist item"
+                    >
+                      <Trash2 size={15} />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
           <TextArea
             label="Notes"
             rows={3}
             value={inspectionForm.notes}
             onChange={(e) => setInspectionForm((s) => ({ ...s, notes: e.target.value }))}
           />
+          <label className="flex items-center gap-2 text-sm cursor-pointer" style={{ color: MUTED }}>
+            <input
+              type="checkbox"
+              checked={inspectionForm.markComplete}
+              onChange={(e) => setInspectionForm((s) => ({ ...s, markComplete: e.target.checked }))}
+            />
+            Mark this inspection as completed immediately
+          </label>
           <div className="flex items-center justify-end gap-3 pt-2">
             <button type="button" onClick={() => setInspectionOpen(false)} className="px-5 py-3 text-xs font-black uppercase tracking-widest cursor-pointer" style={ghostButtonStyle}>
               Cancel
             </button>
             <button type="submit" disabled={workSubmitting} className="px-6 py-3 text-xs font-black uppercase tracking-widest cursor-pointer disabled:opacity-50" style={primaryButtonStyle}>
-              {workSubmitting ? 'Creating...' : 'Create Inspection'}
+              {workSubmitting ? 'Creating...' : inspectionForm.markComplete ? 'Save & Complete' : 'Save Draft'}
             </button>
           </div>
         </form>

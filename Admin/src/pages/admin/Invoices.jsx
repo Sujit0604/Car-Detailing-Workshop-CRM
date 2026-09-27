@@ -1,13 +1,15 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import toast from 'react-hot-toast'
-import { FileText, Plus, Eye, Send, Ban, Search } from 'lucide-react'
+import { FileText, Plus, Eye, Send, Ban, Search, CheckCircle2, Copy } from 'lucide-react'
 import AdminNav from '../../components/AdminNav'
 import StatusBadge from '../../components/StatusBadge'
 import Spinner from '../../components/Spinner'
 import EmptyState from '../../components/EmptyState'
 import Modal from '../../components/Modal'
-import { TextInput, TextArea } from '../../components/Field'
+import { TextInput, TextArea, SelectInput } from '../../components/Field'
 import { listInvoices, getInvoice, generateInvoice, issueInvoice, voidInvoice } from '../../services/invoiceApi'
+import { listAllJobs } from '../../services/adminApi'
 import { formatDate, formatDateTime } from '../../utils/transitions'
 import {
   ACCENT,
@@ -35,6 +37,7 @@ const canIssue = (invoice) => invoice?.status === 'DRAFT'
 const canVoid = (invoice) => invoice?.status && !VOID_BLOCKED_STATUSES.includes(invoice.status)
 
 export default function Invoices() {
+  const [searchParams, setSearchParams] = useSearchParams()
   const [invoices, setInvoices] = useState([])
   const [pagination, setPagination] = useState({ page: 1, totalPages: 1, total: 0 })
   const [page, setPage] = useState(1)
@@ -44,9 +47,27 @@ export default function Invoices() {
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(true)
 
-  const [generateOpen, setGenerateOpen] = useState(false)
-  const [generateForm, setGenerateForm] = useState({ jobId: '', estimateId: '' })
+  // The URL is the single source of truth for the "Generate Invoice" modal:
+  //   ?new=1                    -> open empty
+  //   ?new=1&jobId=..&estimateId=.. -> open pre-filled (linked from Job Detail)
+  const generateOpen = searchParams.get('new') === '1'
+  const prefillJobId = searchParams.get('jobId') || ''
+  const prefillEstimateId = searchParams.get('estimateId') || ''
+
+  const [jobDraft, setJobDraft] = useState('')
+  const [jobTouched, setJobTouched] = useState(false)
+  const [estimateDraft, setEstimateDraft] = useState('')
+  const [estimateTouched, setEstimateTouched] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [jobs, setJobs] = useState([])
+  const [jobsLoaded, setJobsLoaded] = useState(false)
+
+  const generateForm = {
+    jobId: (jobTouched ? jobDraft : prefillJobId).trim(),
+    estimateId: (estimateTouched ? estimateDraft : prefillEstimateId).trim(),
+  }
+
+  const jobsLoading = generateOpen && !jobsLoaded
 
   const [issueTarget, setIssueTarget] = useState(null)
   const [issueForm, setIssueForm] = useState({ dueAt: '' })
@@ -99,20 +120,90 @@ export default function Invoices() {
     setLoading(true)
   }
 
+  // Jobs are only needed to populate the "Generate Invoice" picker, so they are
+  // fetched lazily once the modal has been opened.
+  useEffect(() => {
+    if (!generateOpen || jobsLoaded) return
+
+    let cancelled = false
+
+    listAllJobs({ page: 1, limit: 100, sortBy: 'createdAt', sortOrder: 'desc' })
+      .then((res) => {
+        if (cancelled) return
+        setJobs(res.data?.jobs || [])
+        setJobsLoaded(true)
+      })
+      .catch((err) => {
+        if (cancelled) return
+        toast.error(err.message)
+        setJobsLoaded(true)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [generateOpen, jobsLoaded])
+
+  const openGenerate = () => {
+    setJobDraft('')
+    setJobTouched(false)
+    setEstimateDraft('')
+    setEstimateTouched(false)
+    setSearchParams({ new: '1' }, { replace: true })
+  }
+
+  const closeGenerate = () => {
+    setJobDraft('')
+    setJobTouched(false)
+    setEstimateDraft('')
+    setEstimateTouched(false)
+    setSearchParams({}, { replace: true })
+  }
+
+  // Accepts either the job ObjectId or the human readable job number.
+  const selectedJob = useMemo(() => {
+    const term = generateForm.jobId.toLowerCase()
+    if (!term) return null
+    return (
+      jobs.find(
+        (job) =>
+          job._id?.toLowerCase() === term ||
+          job.jobNumber?.toLowerCase() === term,
+      ) || null
+    )
+  }, [generateForm.jobId, jobs])
+
+  const selectJob = (jobId) => {
+    const job = jobs.find((item) => item._id === jobId)
+    setJobTouched(true)
+    setJobDraft(job ? job.jobNumber || job._id : '')
+  }
+
+  const copyText = async (value, label) => {
+    try {
+      await navigator.clipboard.writeText(value)
+      toast.success(`${label} copied`)
+    } catch {
+      toast.error('Clipboard unavailable — select and copy manually')
+    }
+  }
+
   const handleGenerate = async (e) => {
     e.preventDefault()
-    if (!generateForm.jobId.trim()) {
-      toast.error('Job id is required')
+    const { jobId, estimateId } = generateForm
+
+    if (!jobId) {
+      toast.error('Select a job or paste a job number / id')
       return
     }
     setSaving(true)
     try {
-      await generateInvoice({
-        jobId: generateForm.jobId.trim(),
-        estimateId: generateForm.estimateId.trim() || undefined,
+      const res = await generateInvoice({
+        jobId,
+        ...(estimateId ? { estimateId } : {}),
       })
-      toast.success('Invoice generated')
-      setGenerateOpen(false)
+      toast.success(`Invoice ${res.data?.invoiceNumber || ''} generated`.trim())
+      closeGenerate()
       setPage(1)
       setLoading(true)
     } catch (err) {
@@ -197,7 +288,7 @@ export default function Invoices() {
           </div>
           <button
             type="button"
-            onClick={() => { setGenerateForm({ jobId: '', estimateId: '' }); setGenerateOpen(true) }}
+            onClick={openGenerate}
             className="inline-flex items-center gap-2 px-6 py-3 text-sm font-black uppercase tracking-widest transition-all duration-200 cursor-pointer"
             style={primaryButtonStyle}
             onMouseEnter={(e) => (e.currentTarget.style.background = ACCENT_HOVER)}
@@ -400,26 +491,112 @@ export default function Invoices() {
         )}
       </div>
 
-      <Modal open={generateOpen} onClose={() => setGenerateOpen(false)} title="Generate Invoice">
+      <Modal open={generateOpen} onClose={closeGenerate} title="Generate Invoice">
         <form onSubmit={handleGenerate} className="space-y-4" noValidate>
+          <SelectInput
+            label="Select Job"
+            value={selectedJob?._id || ''}
+            onChange={(e) => selectJob(e.target.value)}
+            placeholder={jobsLoading ? 'Loading jobs...' : 'Select a job'}
+            disabled={jobsLoading}
+          >
+            {jobs.map((job) => (
+              <option key={job._id} value={job._id} style={{ background: PANEL }}>
+                {job.jobNumber} · {job.customerId?.name || 'Unknown'} ·{' '}
+                {job.vehicleId?.registrationNumber || 'No reg'} · {job.status}
+              </option>
+            ))}
+          </SelectInput>
+
           <TextInput
-            label="Job Id"
+            label="Job Id or Job Number"
             required
             value={generateForm.jobId}
-            onChange={(e) => setGenerateForm((s) => ({ ...s, jobId: e.target.value }))}
-            placeholder="Job ObjectId"
+            onChange={(e) => { setJobTouched(true); setJobDraft(e.target.value) }}
+            placeholder="JOB-2026-AB12CD34 or a Mongo ObjectId"
+            list="admin-job-options"
           />
+          <datalist id="admin-job-options">
+            {jobs.map((job) => (
+              <option key={job._id} value={job.jobNumber}>
+                {job.customerId?.name}
+              </option>
+            ))}
+          </datalist>
+
+          {generateForm.jobId && !selectedJob && jobsLoaded && (
+            <p className="text-xs" style={{ color: '#f59e0b' }}>
+              No job on this page matches that value. Check the spelling, or pick it from the list
+              above — only jobs from the 100 most recent are listed.
+            </p>
+          )}
+
+          {selectedJob && (
+            <div
+              className="flex items-start gap-2 text-xs"
+              style={{ border: `1px solid ${LINE_STRONG}`, background: PANEL_ACTIVE, padding: '0.75rem' }}
+            >
+              <CheckCircle2 size={14} style={{ color: '#10b981', flexShrink: 0, marginTop: 1 }} />
+              <span style={{ color: MUTED }}>
+                {selectedJob.jobNumber} · {selectedJob.customerId?.name} ·{' '}
+                {selectedJob.vehicleId?.registrationNumber} · status {selectedJob.status}
+              </span>
+            </div>
+          )}
+
           <TextInput
-            label="Estimate Id"
+            label="Estimate Id or Number"
             value={generateForm.estimateId}
-            onChange={(e) => setGenerateForm((s) => ({ ...s, estimateId: e.target.value }))}
-            placeholder="Optional — defaults to the job estimate"
+            onChange={(e) => { setEstimateTouched(true); setEstimateDraft(e.target.value) }}
+            placeholder="Leave blank to use the job's latest approved estimate"
           />
+
+          <div
+            className="text-xs space-y-1"
+            style={{ border: `1px solid ${LINE_STRONG}`, background: PANEL_ACTIVE, padding: '0.75rem 1rem' }}
+          >
+            <p style={{ color: MUTED, fontFamily: "'Barlow Condensed', sans-serif" }}>
+              WHERE TO FIND THESE VALUES
+            </p>
+            <p style={{ color: FOREGROUND }}>
+              Open <span style={{ color: ACCENT }}>Jobs → {selectedJob?.jobNumber || 'this job'}</span> and
+              the Estimate card shows the estimate number and id, with a{' '}
+              <span style={{ color: ACCENT }}>Generate Invoice</span> button that fills this form in
+              for you.
+            </p>
+            {selectedJob?.jobNumber && (
+              <div className="flex items-center gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => copyText(selectedJob.jobNumber, 'Job number')}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-black uppercase tracking-widest cursor-pointer"
+                  style={ghostButtonStyle}
+                  onMouseEnter={(e) => { e.currentTarget.style.borderColor = ACCENT; e.currentTarget.style.color = ACCENT }}
+                  onMouseLeave={(e) => { e.currentTarget.style.borderColor = LINE_STRONG; e.currentTarget.style.color = MUTED }}
+                >
+                  <Copy size={11} />
+                  {selectedJob.jobNumber}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => copyText(selectedJob._id, 'Job id')}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-black uppercase tracking-widest cursor-pointer"
+                  style={ghostButtonStyle}
+                  onMouseEnter={(e) => { e.currentTarget.style.borderColor = ACCENT; e.currentTarget.style.color = ACCENT }}
+                  onMouseLeave={(e) => { e.currentTarget.style.borderColor = LINE_STRONG; e.currentTarget.style.color = MUTED }}
+                >
+                  <Copy size={11} />
+                  Job Id
+                </button>
+              </div>
+            )}
+          </div>
+
           <p className="text-xs" style={{ color: MUTED }}>
-            An invoice can only be generated once per job.
+            An invoice can only be generated once per job, and requires an approved estimate.
           </p>
           <div className="flex items-center justify-end gap-3 pt-2">
-            <button type="button" onClick={() => setGenerateOpen(false)} className="px-5 py-3 text-xs font-black uppercase tracking-widest cursor-pointer" style={ghostButtonStyle}>
+            <button type="button" onClick={closeGenerate} className="px-5 py-3 text-xs font-black uppercase tracking-widest cursor-pointer" style={ghostButtonStyle}>
               Cancel
             </button>
             <button type="submit" disabled={saving} className="px-6 py-3 text-xs font-black uppercase tracking-widest cursor-pointer disabled:opacity-50" style={primaryButtonStyle}>
@@ -510,6 +687,7 @@ export default function Invoices() {
                 ['Contact', detail.customerId?.phone],
                 ['Booking', detail.bookingId?.bookingNumber],
                 ['Estimate', detail.estimateId?.estimateNumber],
+                ['Job', detail.jobId?.jobNumber || detail.jobSnapshot?.jobNumber],
                 ['Workshop', detail.workshopId?.name],
                 ['Vehicle', detail.vehicleSnapshot?.registrationNumber],
                 ['Currency', detail.currency],

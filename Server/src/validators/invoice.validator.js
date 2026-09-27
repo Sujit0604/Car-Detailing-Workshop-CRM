@@ -5,6 +5,27 @@ const objectIdSchema = z.string().refine((value) => mongoose.Types.ObjectId.isVa
   message: "Invalid ObjectId",
 });
 
+// Accepts either a Mongo ObjectId or a human readable job number (JOB-2026-AB12CD34).
+const jobIdentifierSchema = z
+  .string()
+  .trim()
+  .min(1, "Job id is required")
+  .refine(
+    (value) =>
+      mongoose.Types.ObjectId.isValid(value) || /^[A-Za-z0-9][A-Za-z0-9-]{3,63}$/.test(value),
+    { message: "Enter a valid job ObjectId or job number (e.g. JOB-2026-AB12CD34)" },
+  );
+
+// Optional. Admins may paste an estimate ObjectId or an estimate number
+// (EST-2026-AB12CD34); a missing or blank value is normalised to undefined.
+// Note: in Zod 4 a bare z.union([z.string(), z.undefined()]) still requires the
+// key to be present, so .optional() is what makes an omitted key valid.
+const estimateIdentifierSchema = z
+  .string()
+  .trim()
+  .optional()
+  .transform((value) => (value && value.length > 0 ? value : undefined));
+
 const currencySchema = z
   .string()
   .trim()
@@ -14,8 +35,8 @@ const currencySchema = z
 
 const generateInvoiceSchema = z.object({
   body: z.object({
-    jobId: objectIdSchema,
-    estimateId: objectIdSchema.optional(),
+    jobId: jobIdentifierSchema,
+    estimateId: estimateIdentifierSchema,
   }),
 });
 
