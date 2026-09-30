@@ -31,6 +31,7 @@ const env = {
   JWT_ISSUER: process.env.JWT_ISSUER,
 
   CLIENT_URL: process.env.CLIENT_URL,
+  ADMIN_URL: process.env.ADMIN_URL,
 
   SMTP_USER: process.env.SMTP_USER,
   SMTP_PASS: process.env.SMTP_PASS,
