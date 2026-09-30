@@ -11,6 +11,14 @@ const Job = require("../src/models/Job.js");
 const Estimate = require("../src/models/Estimate.js");
 const InventoryPart = require("../src/models/InventoryPart.js");
 const Media = require("../src/models/Media.js");
+const Inspection = require("../src/models/Inspection.js");
+const JobTask = require("../src/models/JobTask.js");
+const JobPart = require("../src/models/JobPart.js");
+const Invoice = require("../src/models/Invoice.js");
+const Payment = require("../src/models/Payment.js");
+const Review = require("../src/models/Review.js");
+const Notification = require("../src/models/Notification.js");
+const AuditLog = require("../src/models/AuditLog.js");
 const logger = require("../src/utils/logger.js");
 
 const pad = (n, w) => String(n).padStart(w, "0");
@@ -238,6 +246,98 @@ const MEDIA = [
   { ownerType: "USER", ownerKey: "priya@example.com", category: "PROFILE", by: "admin@kromdetail.com", seeds: ["priya-profile"] },
 ];
 
+const INSPECTIONS = [
+  {
+    num: 1, job: 3, inspector: "karan@kromdetail.com", inspectionType: "INITIAL", status: "DRAFT", odometerReading: 24480, fuelLevel: 70,
+    exteriorCondition: "Minor stone chips and light swirl marks on the bonnet.",
+    interiorCondition: "Front passenger seat has a faint stain; dashboard is clean.",
+    notes: "Pre-coating check requested by the customer.",
+    items: [
+      { component: "Front bumper", condition: "FAIR", notes: "Small chips near the parking sensor trim.", imageSeeds: ["inspection-job3-bumper"], recommendedAction: "Touch up before applying ceramic coating." },
+      { component: "Paint surface", condition: "FAIR", notes: "Fine swirl marks are visible under direct light.", imageSeeds: ["inspection-job3-paint"], recommendedAction: "Use a single-stage polish before coating." },
+      { component: "Front passenger seat", condition: "GOOD", notes: "No significant staining after vacuuming.", imageSeeds: [], recommendedAction: "No action required." },
+    ],
+  },
+  {
+    num: 2, job: 1, inspector: "rohan@kromdetail.com", inspectionType: "FINAL", status: "COMPLETED", completedDaysAgo: 2, odometerReading: 18400, fuelLevel: 80,
+    exteriorCondition: "Paint has an even gloss and the glass is streak-free.",
+    interiorCondition: "Headliner stain is reduced and the cabin is fresh.",
+    notes: "Final quality check before vehicle handover.",
+    items: [
+      { component: "Paint finish", condition: "GOOD", notes: "Even gloss after the polish.", imageSeeds: ["inspection-job1-paint"], recommendedAction: "Maintain with a safe wash routine." },
+      { component: "Headliner", condition: "FAIR", notes: "Old stain is significantly reduced.", imageSeeds: ["inspection-job1-headliner"], recommendedAction: "Spot-clean during the next interior service." },
+      { component: "Glass and mirrors", condition: "GOOD", notes: "No visible streaks or water spots.", imageSeeds: ["inspection-job1-glass"], recommendedAction: "No action required." },
+    ],
+  },
+];
+
+const JOB_TASKS = [
+  {
+    job: 1, sequence: 0, title: "Decontaminate exterior paint", description: "Remove road film and check the front bumper before polishing.", taskType: "DETAILING", mechanic: "MECH-SHAIN-01", status: "COMPLETED", estimatedMinutes: 90, actualMinutes: 95, startedDaysAgo: 3, completedDaysAgo: 2, notes: "Completed before the final polish pass.",
+  },
+  {
+    job: 1, sequence: 1, title: "Complete interior stain treatment", description: "Treat the headliner and front passenger seat marks.", taskType: "DETAILING", mechanic: "MECH-SHAIN-01", status: "COMPLETED", estimatedMinutes: 120, actualMinutes: 130, startedDaysAgo: 2, completedDaysAgo: 2, notes: "Customer requested extra care on the headliner.",
+  },
+  {
+    job: 3, sequence: 0, title: "Photograph bumper stone chips", description: "Capture close-up images and record the recommended touch-up.", taskType: "INSPECTION", mechanic: "MECH-SHAIN-01", status: "IN_PROGRESS", estimatedMinutes: 20, startedDaysAgo: 1, notes: "Inspection is being documented for the estimate.",
+  },
+  {
+    job: 3, sequence: 1, title: "Prepare revised coating estimate", description: "Include the bumper touch-up and single-stage polish.", taskType: "DETAILING", mechanic: "MECH-SHAIN-01", status: "BLOCKED", estimatedMinutes: 30, blockedReason: "Waiting for customer approval on the revised estimate.", notes: "Resume after the estimate is approved.",
+  },
+  {
+    job: 4, sequence: 0, title: "Replace front brake pads", description: "Fit the Bosch front set and bed the pads against the disc.", taskType: "REPAIR", mechanic: "MECH-SPEED-01", status: "IN_PROGRESS", estimatedMinutes: 120, startedDaysAgo: 1, notes: "Torque check is required after fitting.",
+  },
+  {
+    job: 4, sequence: 1, title: "Torque wheel nuts", description: "Check wheel nut torque on all four corners.", taskType: "MAINTENANCE", mechanic: "MECH-SPEED-01", status: "PENDING", estimatedMinutes: 20, notes: "Complete after the brake road test.",
+  },
+  {
+    job: 7, sequence: 0, title: "Final polish and glass check", description: "Inspect gloss, remove residue and clean the glass surfaces.", taskType: "DETAILING", mechanic: "MECH-SHAIN-02", status: "COMPLETED", estimatedMinutes: 60, actualMinutes: 65, startedDaysAgo: 1, completedDaysAgo: 1, notes: "Ready for the quality-check sign-off.",
+  },
+];
+
+const JOB_PARTS = [
+  { num: 1, job: 1, part: "WP-1001", quantity: 1, status: "USED", statusReason: "Used during the full-body polish.", reservedDaysAgo: 3, usedDaysAgo: 2 },
+  { num: 2, job: 3, part: "WP-1003", quantity: 1, status: "RESERVED", statusReason: "Reserved for the seat shampooing service.", reservedDaysAgo: 1 },
+  { num: 3, job: 4, part: "MP-2002", quantity: 1, status: "USED", statusReason: "Front brake pads replaced during the brake service.", reservedDaysAgo: 2, usedDaysAgo: 1 },
+  { num: 4, job: 7, part: "WP-1002", quantity: 1, status: "USED", statusReason: "Polish compound used during the final correction.", reservedDaysAgo: 1, usedDaysAgo: 1 },
+];
+
+const INVOICES = [
+  { num: 1, number: "A1B2C3D4", job: 1, estimate: "EST-2026-001", status: "PAID", createdBy: "rohan@kromdetail.com", issuedDaysAgo: 4 },
+  { num: 2, number: "B2C3D4E5", job: 4, estimate: "EST-2026-004", status: "PARTIALLY_PAID", createdBy: "divya@kromdetail.com", issuedDaysAgo: 2 },
+];
+
+const PAYMENTS = [
+  { num: 1, number: "E4F50617", invoice: 1, job: 1, method: "UPI", amount: 6544, amountMinor: 654400, status: "SUCCESS", paidDaysAgo: 2, recordedBy: "rohan@kromdetail.com", notes: "Seeded demo UPI receipt; no online gateway capture." },
+  { num: 2, number: "F50617A8", invoice: 2, job: 4, method: "CASH", amount: 1500.5, amountMinor: 150050, status: "SUCCESS", paidDaysAgo: 1, recordedBy: "divya@kromdetail.com", notes: "Seeded demo cash receipt; balance is pending." },
+];
+
+const REVIEWS = [
+  {
+    num: 1, booking: 1, customer: "priya@example.com", rating: 5, title: "Beautiful finish and very careful service", comment: "The Creta looks brilliant after the detailing. Rohan explained the paint care clearly and the cabin feels fresh.", imageSeeds: ["review-creta-finish"], status: "PUBLISHED", responseBy: "rohan@kromdetail.com", responseMessage: "Thank you, Priya. We are glad the finish met your expectations.", responseDaysAgo: 1,
+  },
+];
+
+const NOTIFICATIONS = [
+  { num: 1, user: "priya@example.com", type: "BOOKING_CONFIRMED", title: "Booking confirmed", message: "Your Creta booking BKG-2026-0001 is confirmed for 05 Sep 2026.", reference: { type: "BOOKING", booking: 1 }, dedupeKey: "seed-booking-1-confirmed", status: "READ", sentDaysAgo: 4, readDaysAgo: 3 },
+  { num: 2, user: "priya@example.com", type: "INVOICE_PAID", title: "Payment received", message: "Payment of Rs. 6,544 received against INV-2026-A1B2C3D4. Thank you.", reference: { type: "INVOICE", invoice: 1 }, dedupeKey: "seed-invoice-1-paid", status: "READ", sentDaysAgo: 2, readDaysAgo: 1 },
+  { num: 3, user: "arjun@example.com", type: "ESTIMATE_READY", title: "Estimate ready for approval", message: "The revised estimate EST-2026-004 is ready for your approval.", reference: { type: "ESTIMATE", estimate: "EST-2026-004" }, dedupeKey: "seed-estimate-4-ready", status: "SENT", sentDaysAgo: 1 },
+  { num: 4, user: "arjun@example.com", type: "JOB_STARTED", title: "Work started", message: "Your Nexon has arrived at Speed X and the diagnostic check is in progress.", reference: { type: "JOB", job: 4 }, dedupeKey: "seed-job-4-started", status: "SENT", sentDaysAgo: 1 },
+  { num: 5, user: "priya@example.com", type: "REVIEW_RESPONSE", title: "Thanks for your review", message: "Thanks for your review. We are glad the finish met your expectations.", reference: { type: "REVIEW", review: 1 }, dedupeKey: "seed-review-1-response", status: "SENT", sentDaysAgo: 0 },
+  { num: 6, user: "rohan@kromdetail.com", type: "INVOICE_ISSUED", title: "Invoice issued", message: "Invoice INV-2026-B2C3D4E5 is issued; Rs. 1,500.50 is pending.", reference: { type: "INVOICE", invoice: 2 }, dedupeKey: "seed-invoice-2-issued", status: "SENT", sentDaysAgo: 2 },
+];
+
+const AUDIT_LOGS = [
+  { num: 1, requestId: "seed-audit-invoice-1-issued", actor: "rohan@kromdetail.com", action: "INVOICE_ISSUED", entityType: "Invoice", entity: { invoice: 1 }, oldValue: { status: "DRAFT" }, newValue: { status: "ISSUED" }, metadata: { source: "seed" }, method: "POST", path: "/api/invoices/1/issue" },
+  { num: 2, requestId: "seed-audit-invoice-2-created", actor: "divya@kromdetail.com", action: "INVOICE_CREATED", entityType: "Invoice", entity: { invoice: 2 }, oldValue: {}, newValue: { status: "DRAFT" }, metadata: { source: "seed" }, method: "POST", path: "/api/invoices" },
+  { num: 3, requestId: "seed-audit-payment-1-recorded", actor: "rohan@kromdetail.com", action: "PAYMENT_RECORDED", entityType: "Payment", entity: { payment: 1 }, oldValue: {}, newValue: { status: "SUCCESS", amountMinor: 654400 }, metadata: { source: "seed", method: "UPI" }, method: "POST", path: "/api/payments/offline" },
+  { num: 4, requestId: "seed-audit-payment-2-recorded", actor: "divya@kromdetail.com", action: "PAYMENT_RECORDED", entityType: "Payment", entity: { payment: 2 }, oldValue: {}, newValue: { status: "SUCCESS", amountMinor: 150050 }, metadata: { source: "seed", method: "CASH" }, method: "POST", path: "/api/payments/offline" },
+  { num: 5, requestId: "seed-audit-review-1-created", actor: "priya@example.com", action: "REVIEW_CREATED", entityType: "Review", entity: { review: 1 }, oldValue: {}, newValue: { rating: 5, status: "PUBLISHED" }, metadata: { source: "seed" }, method: "POST", path: "/api/reviews" },
+  { num: 6, requestId: "seed-audit-inspection-1-created", actor: "karan@kromdetail.com", action: "INSPECTION_CREATED", entityType: "Inspection", entity: { inspection: 1 }, oldValue: {}, newValue: { status: "DRAFT", inspectionType: "INITIAL" }, metadata: { source: "seed" }, method: "POST", path: "/api/jobs/3/inspections" },
+  { num: 7, requestId: "seed-audit-task-4-started", actor: "anil@kromdetail.com", action: "JOB_TASK_STARTED", entityType: "JobTask", entity: { job: 4, sequence: 0 }, oldValue: { status: "PENDING" }, newValue: { status: "IN_PROGRESS" }, metadata: { source: "seed" }, method: "PATCH", path: "/api/jobs/4/tasks/0/status" },
+  { num: 8, requestId: "seed-audit-notification-6-sent", actor: "admin@kromdetail.com", action: "NOTIFICATION_SENT", entityType: "Notification", entity: { notification: 6 }, oldValue: {}, newValue: { status: "SENT" }, metadata: { source: "seed" }, method: "POST", path: "/api/notifications" },
+];
+
 const upsertByQuery = async (Model, query, data) => {
   const existing = await Model.findOne(query);
   if (existing) return existing;
@@ -290,10 +390,35 @@ const seed = async () => {
         workshopId: workshopCode ? workshopMap.get(workshopCode)?._id || null : null,
       };
       if (existing) {
+        let changed = false;
+
         if ((existing.workshopId?.toString() || null) !== (userData.workshopId?.toString() || null)) {
           existing.workshopId = userData.workshopId || null;
-          await existing.save();
+          changed = true;
         }
+
+        // Re-running the seed must keep demo accounts loggable: the three day
+        // re-verify gate blocks login with an OTP-only response once it lapses.
+        if (existing.needsVerification || !existing.emailVerified || existing.status !== "ACTIVE") {
+          existing.needsVerification = false;
+          existing.emailVerified = true;
+          existing.phoneVerified = true;
+          existing.status = "ACTIVE";
+          changed = true;
+        }
+
+        if (!existing.threeDayExpires || new Date(existing.threeDayExpires) < new Date()) {
+          existing.threeDayExpires = userData.threeDayExpires;
+          changed = true;
+        }
+
+        if (existing.verificationCode || existing.verificationCodeExpires) {
+          existing.verificationCode = null;
+          existing.verificationCodeExpires = null;
+          changed = true;
+        }
+
+        if (changed) await existing.save();
       } else {
         await User.create(userData);
       }
@@ -447,6 +572,8 @@ const seed = async () => {
     }
     counts.estimates = await Estimate.countDocuments();
 
+    const estimateMap = new Map((await Estimate.find()).map((e) => [e.estimateNumber, e]));
+
     for (const part of INVENTORY) {
       await upsertByQuery(
         InventoryPart,
@@ -473,6 +600,8 @@ const seed = async () => {
     }
     counts.inventory = await InventoryPart.countDocuments();
 
+    const inventoryPartMap = new Map((await InventoryPart.find()).map((p) => [`${p.workshopId}_${p.partNumber}`, p]));
+
     for (const m of MEDIA) {
       let ownerId;
       if (m.ownerType === "VEHICLE") ownerId = vehicleMap.get(m.ownerKey)?._id;
@@ -494,6 +623,299 @@ const seed = async () => {
       );
     }
     counts.media = await Media.countDocuments();
+
+    const inspectionMap = new Map();
+    for (const i of INSPECTIONS) {
+      const job = jobMap.get(i.job);
+      const inspector = userMap.get(i.inspector);
+      if (!job || !inspector) continue;
+      const existing = await Inspection.findOne({ jobId: job._id, inspectionType: i.inspectionType, odometerReading: i.odometerReading });
+      if (existing) {
+        inspectionMap.set(i.num, existing);
+        continue;
+      }
+      const inspectionData = {
+        jobId: job._id,
+        inspectorId: inspector._id,
+        inspectionType: i.inspectionType,
+        status: i.status,
+        odometerReading: i.odometerReading,
+        fuelLevel: i.fuelLevel,
+        exteriorCondition: i.exteriorCondition,
+        interiorCondition: i.interiorCondition,
+        notes: i.notes,
+        items: i.items.map((item) => ({
+          component: item.component,
+          condition: item.condition,
+          notes: item.notes,
+          images: (item.imageSeeds || []).map((seed) => ({ url: img(seed), publicId: null })),
+          recommendedAction: item.recommendedAction,
+        })),
+      };
+      if (i.status === "COMPLETED") inspectionData.completedAt = iso(addDays(new Date(), -(i.completedDaysAgo || 0)));
+      const inspection = await Inspection.create(inspectionData);
+      inspectionMap.set(i.num, inspection);
+    }
+    counts.inspections = await Inspection.countDocuments();
+
+    const taskMap = new Map();
+    for (const t of JOB_TASKS) {
+      const job = jobMap.get(t.job);
+      const mechanic = t.mechanic ? mechanicMap.get(t.mechanic) : null;
+      if (!job || (t.mechanic && !mechanic)) continue;
+      if (mechanic && mechanic.workshopId.toString() !== job.workshopId.toString()) continue;
+      const existing = await JobTask.findOne({ jobId: job._id, sequence: t.sequence });
+      if (existing) {
+        taskMap.set(`${t.job}-${t.sequence}`, existing);
+        continue;
+      }
+      const taskData = {
+        jobId: job._id,
+        sequence: t.sequence,
+        title: t.title,
+        description: t.description,
+        taskType: t.taskType,
+        assignedMechanicId: mechanic?._id || null,
+        status: t.status,
+        estimatedMinutes: t.estimatedMinutes,
+        actualMinutes: t.actualMinutes,
+        notes: t.notes,
+      };
+      if (t.startedDaysAgo !== undefined) taskData.startedAt = iso(addDays(new Date(), -t.startedDaysAgo));
+      if (t.completedDaysAgo !== undefined) taskData.completedAt = iso(addDays(new Date(), -t.completedDaysAgo));
+      if (t.blockedReason) taskData.blockedReason = t.blockedReason;
+      const task = await JobTask.create(taskData);
+      taskMap.set(`${t.job}-${t.sequence}`, task);
+    }
+    counts.jobTasks = await JobTask.countDocuments();
+
+    const jobPartMap = new Map();
+    for (const p of JOB_PARTS) {
+      const job = jobMap.get(p.job);
+      if (!job) continue;
+      const inventoryPart = inventoryPartMap.get(`${job.workshopId}_${p.part}`);
+      if (!inventoryPart) continue;
+      const existing = await JobPart.findOne({ jobId: job._id, inventoryPartId: inventoryPart._id });
+      if (existing) {
+        jobPartMap.set(p.num, existing);
+        continue;
+      }
+      const unitPrice = round2(inventoryPart.sellingPrice);
+      const partData = {
+        jobId: job._id,
+        inventoryPartId: inventoryPart._id,
+        quantity: p.quantity,
+        unitPrice,
+        totalPrice: round2(unitPrice * p.quantity),
+        status: p.status,
+        statusReason: p.statusReason,
+      };
+      if (p.reservedDaysAgo !== undefined) partData.reservedAt = iso(addDays(new Date(), -p.reservedDaysAgo));
+      if (p.usedDaysAgo !== undefined) partData.usedAt = iso(addDays(new Date(), -p.usedDaysAgo));
+      if (p.status === "RESERVED") {
+        const stockUpdate = await InventoryPart.updateOne(
+          { _id: inventoryPart._id, workshopId: job.workshopId, $expr: { $gte: [{ $subtract: ["$stock.quantity", "$stock.reservedQuantity"] }, p.quantity] } },
+          { $inc: { "stock.reservedQuantity": p.quantity }, $set: { "stock.reasonOfLastAdjustment": `Reserved for job ${job.jobNumber}` } }
+        );
+        if (stockUpdate.matchedCount === 0) continue;
+      } else if (p.status === "USED") {
+        const stockUpdate = await InventoryPart.updateOne(
+          { _id: inventoryPart._id, workshopId: job.workshopId, "stock.quantity": { $gte: p.quantity } },
+          { $inc: { "stock.quantity": -p.quantity }, $set: { "stock.reasonOfLastAdjustment": `Used on job ${job.jobNumber}` } }
+        );
+        if (stockUpdate.matchedCount === 0) continue;
+      }
+      const part = await JobPart.create(partData);
+      jobPartMap.set(p.num, part);
+    }
+    counts.jobParts = await JobPart.countDocuments();
+
+    const invoiceMap = new Map();
+    for (const i of INVOICES) {
+      const job = jobMap.get(i.job);
+      const estimate = estimateMap.get(i.estimate);
+      if (!job || !estimate || estimate.status !== "APPROVED" || estimate.jobId.toString() !== job._id.toString()) continue;
+      const invoiceNumber = `INV-2026-${i.number}`;
+      const existing = await Invoice.findOne({ $or: [{ invoiceNumber }, { jobId: job._id }] });
+      if (existing) {
+        invoiceMap.set(i.num, existing);
+        invoiceMap.set(`job:${job._id}`, existing);
+        continue;
+      }
+      const booking = await Booking.findById(job.bookingId);
+      const customer = await User.findById(job.customerId);
+      const vehicle = await Vehicle.findById(job.vehicleId);
+      if (!booking || !customer || !vehicle) continue;
+      if (booking.customerId.toString() !== customer._id.toString() || booking.vehicleId.toString() !== vehicle._id.toString() || booking.workshopId.toString() !== job.workshopId.toString()) continue;
+      const createdBy = userMap.get(i.createdBy)?._id;
+      if (!createdBy) continue;
+      const items = estimate.items.map((item) => ({
+        type: item.type,
+        referenceId: item.referenceId || null,
+        description: item.name,
+        quantity: item.quantity,
+        unitPrice: item.unitPrice,
+        taxRate: 0,
+        taxAmount: 0,
+        total: round2(item.quantity * item.unitPrice),
+      }));
+      const breakup = priceBreakup(items, estimate.pricing?.discount || 0);
+      const invoiceData = {
+        invoiceNumber,
+        jobId: job._id,
+        estimateId: estimate._id,
+        bookingId: booking._id,
+        customerId: customer._id,
+        workshopId: job.workshopId,
+        customerSnapshot: { name: customer.name, email: customer.email, phone: customer.phone },
+        vehicleSnapshot: { registrationNumber: vehicle.registrationNumber, make: vehicle.make, model: vehicle.model, variant: vehicle.variant, manufacturingYear: vehicle.manufacturingYear },
+        bookingSnapshot: { bookingNumber: booking.bookingNumber, status: booking.status, paymentStatus: booking.paymentStatus, appointmentDate: booking.appointment?.date },
+        jobSnapshot: { jobNumber: job.jobNumber, status: job.status, completedAt: job.completedAt },
+        estimateSnapshot: { estimateNumber: estimate.estimateNumber, version: estimate.version, status: estimate.status },
+        items,
+        currency: "INR",
+        pricing: { subtotal: breakup.subtotal, discount: breakup.discount, tax: breakup.tax, roundOff: 0, grandTotal: breakup.total },
+        status: i.status,
+        createdBy,
+      };
+      if (i.status !== "DRAFT") {
+        invoiceData.issuedAt = iso(addDays(new Date(), -i.issuedDaysAgo));
+        invoiceData.dueAt = iso(addDays(new Date(), 7 - i.issuedDaysAgo));
+        invoiceData.issuedBy = createdBy;
+      }
+      const invoice = await Invoice.create(invoiceData);
+      invoiceMap.set(i.num, invoice);
+      invoiceMap.set(`job:${job._id}`, invoice);
+    }
+    counts.invoices = await Invoice.countDocuments();
+
+    const paymentMap = new Map();
+    for (const p of PAYMENTS) {
+      const paymentNumber = `PAY-2026-${p.number}`;
+      const existing = await Payment.findOne({ paymentNumber });
+      if (existing) {
+        paymentMap.set(p.num, existing);
+        continue;
+      }
+      const job = jobMap.get(p.job);
+      const invoice = invoiceMap.get(p.invoice) || (job ? await Invoice.findOne({ jobId: job._id }) : null);
+      const recordedBy = userMap.get(p.recordedBy)?._id;
+      if (!invoice || !recordedBy) continue;
+      const paymentData = {
+        paymentNumber,
+        invoiceId: invoice._id,
+        bookingId: invoice.bookingId,
+        customerId: invoice.customerId,
+        workshopId: invoice.workshopId,
+        gateway: p.method,
+        amount: p.amount,
+        amountMinor: p.amountMinor,
+        currency: "INR",
+        method: p.method,
+        status: p.status,
+        paidAt: iso(addDays(new Date(), -p.paidDaysAgo)),
+        metadata: { source: "offline", recordedBy, notes: p.notes },
+      };
+      const payment = await upsertByQuery(Payment, { paymentNumber }, paymentData);
+      paymentMap.set(p.num, payment);
+    }
+    counts.payments = await Payment.countDocuments();
+
+    const reviewMap = new Map();
+    for (const r of REVIEWS) {
+      const booking = bookingMap.get(`BKG-2026-${pad(r.booking, 4)}`);
+      const customer = userMap.get(r.customer);
+      if (!booking || !customer || booking.customerId.toString() !== customer._id.toString() || booking.status !== "COMPLETED" || booking.paymentStatus !== "PAID") continue;
+      const existing = await Review.findOne({ bookingId: booking._id });
+      if (existing) {
+        reviewMap.set(r.num, existing);
+        continue;
+      }
+      const responder = userMap.get(r.responseBy);
+      if (!responder || !responder.workshopId || responder.workshopId.toString() !== booking.workshopId.toString()) continue;
+      const reviewData = {
+        customerId: booking.customerId,
+        bookingId: booking._id,
+        vehicleId: booking.vehicleId,
+        workshopId: booking.workshopId,
+        rating: r.rating,
+        title: r.title,
+        comment: r.comment,
+        images: (r.imageSeeds || []).map((seed) => ({ url: img(seed), publicId: null })),
+        status: r.status,
+        response: { message: r.responseMessage, respondedBy: responder._id, respondedAt: iso(addDays(new Date(), -(r.responseDaysAgo || 0))) },
+      };
+      const review = await Review.create(reviewData);
+      reviewMap.set(r.num, review);
+    }
+    counts.reviews = await Review.countDocuments();
+
+    const notificationMap = new Map();
+    for (const n of NOTIFICATIONS) {
+      const user = userMap.get(n.user);
+      if (!user) continue;
+      let referenceId = null;
+      if (n.reference.type === "BOOKING") {
+        referenceId = bookingMap.get(`BKG-2026-${pad(n.reference.booking, 4)}`)?._id || null;
+      } else if (n.reference.type === "ESTIMATE") {
+        referenceId = estimateMap.get(n.reference.estimate)?._id || null;
+      } else if (n.reference.type === "JOB") {
+        referenceId = jobMap.get(n.reference.job)?._id || null;
+      } else if (n.reference.type === "INVOICE") {
+        referenceId = invoiceMap.get(n.reference.invoice)?._id || null;
+      } else if (n.reference.type === "PAYMENT") {
+        referenceId = paymentMap.get(n.reference.payment)?._id || null;
+      } else if (n.reference.type === "REVIEW") {
+        referenceId = reviewMap.get(n.reference.review)?._id || null;
+      }
+      if (!referenceId) continue;
+      const notificationData = {
+        userId: user._id,
+        type: n.type,
+        channel: "IN_APP",
+        title: n.title,
+        message: n.message,
+        reference: { type: n.reference.type, id: referenceId },
+        dedupeKey: n.dedupeKey,
+        status: n.status,
+        sentAt: iso(addDays(new Date(), -n.sentDaysAgo)),
+        readAt: n.status === "READ" ? iso(addDays(new Date(), -(n.readDaysAgo || 0))) : null,
+      };
+      const notification = await upsertByQuery(Notification, { userId: user._id, dedupeKey: n.dedupeKey }, notificationData);
+      notificationMap.set(n.num, notification);
+    }
+    counts.notifications = await Notification.countDocuments();
+
+    const auditLogMap = new Map();
+    for (const a of AUDIT_LOGS) {
+      const actor = userMap.get(a.actor);
+      let entity = null;
+      if (a.entityType === "Invoice") entity = invoiceMap.get(a.entity.invoice);
+      else if (a.entityType === "Payment") entity = paymentMap.get(a.entity.payment);
+      else if (a.entityType === "Review") entity = reviewMap.get(a.entity.review);
+      else if (a.entityType === "Inspection") entity = inspectionMap.get(a.entity.inspection);
+      else if (a.entityType === "JobTask") entity = taskMap.get(`${a.entity.job}-${a.entity.sequence}`);
+      else if (a.entityType === "Notification") entity = notificationMap.get(a.entity.notification);
+      if (!actor || !entity) continue;
+      const auditData = {
+        actorId: actor._id,
+        actorRole: actor.role,
+        actorName: actor.name,
+        actorEmail: actor.email,
+        action: a.action,
+        entityType: a.entityType,
+        entityId: entity._id,
+        oldValue: a.oldValue,
+        newValue: a.newValue,
+        metadata: { source: "seed", ...(a.metadata || {}) },
+        requestId: a.requestId,
+        method: a.method,
+        path: a.path,
+      };
+      const auditLog = await upsertByQuery(AuditLog, { requestId: a.requestId }, auditData);
+      auditLogMap.set(a.num, auditLog);
+    }
+    counts.auditLogs = await AuditLog.countDocuments();
 
     logger.info(`Seeding complete. Counts: ${JSON.stringify(counts)}`);
     logger.info("Demo accounts — Admin: admin@kromdetail.com / Admin@123 | Staff: <name>@kromdetail.com / Staff@123 | Customer: priya@|arjun@|sweety@example.com / Customer@123");

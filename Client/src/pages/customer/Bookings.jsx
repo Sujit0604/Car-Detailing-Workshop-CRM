@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
-import { CalendarClock, XCircle, ChevronDown, ChevronUp, CalendarPlus, ClipboardList, ArrowRight } from 'lucide-react'
+import { CalendarClock, XCircle, ChevronDown, ChevronUp, CalendarPlus, ClipboardList, ArrowRight, Car } from 'lucide-react'
 import AppNav from '../../components/AppNav'
 import StatusBadge from '../../components/StatusBadge'
 import EmptyState from '../../components/EmptyState'
@@ -9,6 +9,7 @@ import Spinner from '../../components/Spinner'
 import Modal from '../../components/Modal'
 import { listMyBookings, cancelBooking } from '../../services/bookingApi'
 import { listJobs } from '../../services/jobApi'
+import { getColorHex } from '../../utils/vehicle'
 import {
   ACCENT,
   ACCENT_HOVER,
@@ -33,13 +34,22 @@ function formatDate(value) {
   })
 }
 
-function DetailRow({ label, value }) {
+function DetailRow({ label, value, colorDot }) {
   return (
     <div className="flex items-center justify-between py-1.5 text-sm">
       <span className="uppercase tracking-widest text-xs" style={{ color: MUTED, fontFamily: "'Barlow Condensed', sans-serif" }}>
         {label}
       </span>
-      <span style={{ color: FOREGROUND }}>{value}</span>
+      <span className="inline-flex items-center gap-2 text-right" style={{ color: FOREGROUND }}>
+        {value}
+        {value && colorDot && (
+          <span
+            className="inline-block w-3 h-3 rounded-full shrink-0"
+            title="Vehicle colour"
+            style={{ background: colorDot, border: `1px solid ${LINE_STRONG}` }}
+          />
+        )}
+      </span>
     </div>
   )
 }
@@ -181,8 +191,21 @@ export default function BookingsPage() {
                         >
                           {booking.bookingNumber}
                         </span>
+                        <p className="text-xs mt-0.5 flex items-center gap-2 flex-wrap" style={{ color: MUTED }}>
+                          {vehicle ? `${vehicle.make} ${vehicle.model}` : 'Vehicle'}
+                          {vehicle?.variant && <span style={{ color: FOREGROUND }}>{vehicle.variant}</span>}
+                          {vehicle?.color && (
+                            <span
+                              className="inline-block w-2.5 h-2.5 rounded-full align-middle"
+                              title={`Colour: ${vehicle.color}`}
+                              style={{ background: getColorHex(vehicle.color), border: `1px solid ${LINE_STRONG}` }}
+                            />
+                          )}
+                        </p>
+                        <p className="text-xs mt-0.5 font-semibold tracking-wider" style={{ color: ACCENT }}>
+                          {vehicle?.registrationNumber || '—'}
+                        </p>
                         <p className="text-xs mt-0.5" style={{ color: MUTED }}>
-                          {vehicle ? `${vehicle.make} ${vehicle.model}` : 'Vehicle'} ·{' '}
                           {booking.appointment?.startTime || '—'} · {formatDate(booking.appointment?.date)}
                         </p>
                       </div>
@@ -206,7 +229,7 @@ export default function BookingsPage() {
                       className="px-5 py-4"
                       style={{ borderTop: `1px solid ${LINE_STRONG}` }}
                     >
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
                         <div>
                           <p
                             className="text-xs font-black uppercase tracking-widest mb-2"
@@ -218,6 +241,34 @@ export default function BookingsPage() {
                           <DetailRow label="Date" value={formatDate(booking.appointment?.date)} />
                           <DetailRow label="Time" value={`${booking.appointment?.startTime || '—'}${booking.appointment?.endTime ? ` – ${booking.appointment?.endTime}` : ''}`} />
                           <DetailRow label="Payment" value={booking.paymentStatus} />
+                        </div>
+
+                        <div>
+                          <p
+                            className="text-xs font-black uppercase tracking-widest mb-2 flex items-center gap-2"
+                            style={{ fontFamily: "'Barlow Condensed', sans-serif", color: ACCENT }}
+                          >
+                            <Car size={13} />
+                            Vehicle
+                          </p>
+                          <DetailRow
+                            label="Registration"
+                            value={vehicle?.registrationNumber || '—'}
+                          />
+                          <DetailRow
+                            label="Vehicle"
+                            value={
+                              vehicle
+                                ? [vehicle.make, vehicle.model].filter(Boolean).join(' ')
+                                : '—'
+                            }
+                          />
+                          <DetailRow label="Variant" value={vehicle?.variant || '—'} />
+                          <DetailRow
+                            label="Colour"
+                            value={vehicle?.color || '—'}
+                            colorDot={vehicle?.color ? getColorHex(vehicle.color) : null}
+                          />
                         </div>
 
                         <div>

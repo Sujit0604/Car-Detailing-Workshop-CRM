@@ -1,4 +1,5 @@
 const ApiError = require("../utils/ApiError.js");
+const { resolveScopedWorkshopId, assertOwnWorkshop } = require("../utils/workshopScope.js");
 const Workshop = require("../models/Workshop.js");
 const Job = require("../models/Job.js");
 const Booking = require("../models/Booking.js");
@@ -23,11 +24,15 @@ const createWorkshopService = async (workshopData) => {
   return workshop;
 };
 
-const getWorkshopByIdService = async (workshopId) => {
+const getWorkshopByIdService = async (workshopId, user) => {
   const workshop = await Workshop.findById(workshopId);
 
   if (!workshop) {
     throw new ApiError(404, "Workshop not found");
+  }
+
+  if (user) {
+    await assertOwnWorkshop(user, workshop._id);
   }
 
   return workshop;
@@ -50,6 +55,14 @@ const listWorkshopsService = async (user, query) => {
     filter.status = status;
   } else if (user.role !== "ADMIN") {
     filter.status = "ACTIVE";
+  }
+
+  // Staff only ever see the workshop they are posted to, so the workshop master
+  // list is pinned to it just like bookings, inventory and jobs.
+  const scopedWorkshopId = await resolveScopedWorkshopId(user, null);
+
+  if (scopedWorkshopId) {
+    filter._id = scopedWorkshopId;
   }
 
   if (search) {
@@ -142,8 +155,8 @@ const deleteWorkshopService = async (workshopId) => {
   return { _id: workshop._id, status: workshop.status };
 };
 
-const getWorkshopOverviewService = async (workshopId) => {
-  const workshop = await getWorkshopByIdService(workshopId);
+const getWorkshopOverviewService = async (workshopId, user) => {
+  const workshop = await getWorkshopByIdService(workshopId, user);
 
   const [jobCounts, bookingCounts, activeJobs, lowStockParts, mechanicsActive, advisorCount, managerCount, todayBookings] =
     await Promise.all([
@@ -195,8 +208,8 @@ const getWorkshopOverviewService = async (workshopId) => {
   };
 };
 
-const getWorkshopStaffService = async (workshopId) => {
-  const workshop = await getWorkshopByIdService(workshopId);
+const getWorkshopStaffService = async (workshopId, user) => {
+  const workshop = await getWorkshopByIdService(workshopId, user);
 
   const [managers, advisors, mechanics] = await Promise.all([
     User.find({ role: "WORKSHOP_MANAGER", workshopId: workshop._id }, "-password")

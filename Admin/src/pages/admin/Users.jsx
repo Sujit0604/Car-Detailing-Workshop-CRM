@@ -383,6 +383,9 @@ export default function Users() {
                         <span className="ml-2 text-[10px] uppercase tracking-widest" style={{ color: ACCENT }}>You</span>
                       )}
                       <p className="text-xs" style={{ color: MUTED }}>{u.email}</p>
+                      <p className="text-[11px] tracking-wide" style={{ color: MUTED, opacity: 0.75 }}>
+                        ID: {u._id}
+                      </p>
                     </td>
                     <td className="px-5 py-3.5 text-sm whitespace-nowrap" style={{ color: MUTED }}>
                       {u.phone || '—'}

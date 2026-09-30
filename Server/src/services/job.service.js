@@ -2,6 +2,7 @@ const { v4: uuidv4 } = require("uuid");
 const mongoose = require("mongoose");
 const ApiError = require("../utils/ApiError.js");
 const logger = require("../utils/logger.js");
+const { resolveScopedWorkshopId, assertOwnWorkshop } = require("../utils/workshopScope.js");
 const Job = require("../models/Job.js");
 const Booking = require("../models/Booking.js");
 const User = require("../models/User.js");
@@ -10,6 +11,9 @@ const Mechanic = require("../models/Mechanic.js");
 const generateJobNumber = () => {
   return `JOB-${new Date().getFullYear()}-${uuidv4().split("-")[0].toUpperCase()}`;
 };
+
+const VEHICLE_DETAIL_FIELDS =
+  "registrationNumber make model variant vin manufacturingYear fuelType transmission color odometer images";
 
 const JOB_STATUS_TRANSITIONS = {
   CREATED: ["CHECK_IN", "CANCELLED"],
@@ -119,6 +123,10 @@ const createJobFromBookingService = async (bookingId, serviceAdvisorId, actor = 
     throw new ApiError(404, "Booking not found");
   }
 
+  if (actor) {
+    await assertOwnWorkshop(actor, booking.workshopId);
+  }
+
   const existingJob = await Job.findOne({ bookingId });
 
   if (existingJob) {
@@ -162,7 +170,7 @@ const getJobByIdService = async (jobId, user) => {
   const job = await Job.findById(jobId)
     .populate("bookingId", "bookingNumber appointment pricing")
     .populate("customerId", "name email phone")
-    .populate("vehicleId", "registrationNumber make model color images")
+    .populate("vehicleId", VEHICLE_DETAIL_FIELDS)
     .populate("workshopId", "name code")
     .populate({
       path: "assignedMechanicId",
@@ -187,6 +195,8 @@ const getJobByIdService = async (jobId, user) => {
       throw new ApiError(403, "This job does not belong to your workshop");
     }
   }
+
+  await assertOwnWorkshop(user, job.workshopId?._id);
 
   const result = job.toObject();
 
@@ -231,6 +241,9 @@ const listJobsService = async (user, query, workshopId) => {
     filter.customerId = user._id;
   }
 
+  // Workshop staff only ever list jobs from the workshop they are posted to.
+  const scopedWorkshopId = await resolveScopedWorkshopId(user, workshopId);
+
   if (user.role === "MECHANIC") {
     const mechanic = await getMechanicForUser(user._id);
 
@@ -239,14 +252,11 @@ const listJobsService = async (user, query, workshopId) => {
     }
 
     filter.assignedMechanicId = mechanic._id;
-    filter.workshopId = workshopId || mechanic.workshopId;
-
-    if (workshopId && workshopId !== mechanic.workshopId.toString()) {
-      return { jobs: [], pagination: { page, limit, total: 0, totalPages: 0 } };
-    }
+    filter.workshopId = scopedWorkshopId || mechanic.workshopId;
+  } else if (scopedWorkshopId) {
+    filter.workshopId = scopedWorkshopId;
   }
 
-  if (workshopId && user.role !== "MECHANIC") filter.workshopId = workshopId;
   if (status) filter.status = status;
   if (mechanicId) filter.assignedMechanicId = mechanicId;
 
@@ -262,7 +272,7 @@ const listJobsService = async (user, query, workshopId) => {
   const [jobs, total] = await Promise.all([
     Job.find(filter)
       .populate("bookingId", "bookingNumber")
-      .populate("vehicleId", "registrationNumber make model")
+      .populate("vehicleId", "registrationNumber make model variant color")
       .populate({
         path: "assignedMechanicId",
         select: "employeeCode userId",

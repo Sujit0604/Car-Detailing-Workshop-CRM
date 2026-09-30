@@ -9,7 +9,12 @@ import Dashboard from "../pages/customer/Dashboard.jsx";
 import Vehicles from "../pages/customer/Vehicles.jsx";
 import BookService from "../pages/customer/BookService.jsx";
 import Bookings from "../pages/customer/Bookings.jsx";
+import CustomerJobDetail from "../pages/customer/JobDetail.jsx";
+import Payments from "../pages/customer/Payments.jsx";
+import Invoices from "../pages/customer/Invoices.jsx";
+import Reviews from "../pages/customer/Reviews.jsx";
 import JobBoard from "../pages/workshop/JobBoard.jsx";
+import Notifications from "../pages/workshop/Notifications.jsx";
 import JobDetail from "../pages/workshop/JobDetail.jsx";
 import WorkshopBookings from "../pages/workshop/WorkshopBookings.jsx";
 import WorkshopBookingDetail from "../pages/workshop/BookingDetail.jsx";
@@ -29,10 +34,15 @@ const router = createBrowserRouter(
         <Route path="/vehicles" element={<ProtectedRoute><RoleRoute roles={['CUSTOMER']}><Vehicles /></RoleRoute></ProtectedRoute>}/>
         <Route path="/book-service" element={<ProtectedRoute><RoleRoute roles={['CUSTOMER']}><BookService /></RoleRoute></ProtectedRoute>}/>
         <Route path="/bookings" element={<ProtectedRoute><RoleRoute roles={['CUSTOMER']}><Bookings /></RoleRoute></ProtectedRoute>}/>
-        <Route path="/jobs/:jobId" element={<ProtectedRoute><RoleRoute roles={['CUSTOMER']}><JobDetail /></RoleRoute></ProtectedRoute>}/>
+        <Route path="/jobs/:jobId" element={<ProtectedRoute><RoleRoute roles={['CUSTOMER']}><CustomerJobDetail /></RoleRoute></ProtectedRoute>}/>
+        <Route path="/payments" element={<ProtectedRoute><RoleRoute roles={['CUSTOMER']}><Payments /></RoleRoute></ProtectedRoute>}/>
+        <Route path="/invoices" element={<ProtectedRoute><RoleRoute roles={['CUSTOMER']}><Invoices /></RoleRoute></ProtectedRoute>}/>
+        <Route path="/reviews" element={<ProtectedRoute><RoleRoute roles={['CUSTOMER']}><Reviews /></RoleRoute></ProtectedRoute>}/>
+        <Route path="/notifications" element={<ProtectedRoute><RoleRoute roles={['CUSTOMER']}><Notifications /></RoleRoute></ProtectedRoute>}/>
         
         <Route path="/workshop/jobs" element={<ProtectedRoute><StaffRoute><JobBoard /></StaffRoute></ProtectedRoute>}/>
         <Route path="/workshop/jobs/:jobId" element={<ProtectedRoute><StaffRoute><JobDetail /></StaffRoute></ProtectedRoute>}/>
+        <Route path="/workshop/notifications" element={<ProtectedRoute><StaffRoute><Notifications /></StaffRoute></ProtectedRoute>}/>
         <Route path="/workshop/bookings" element={<ProtectedRoute><RoleRoute roles={['WORKSHOP_MANAGER', 'SERVICE_ADVISOR', 'ADMIN']}><WorkshopBookings /></RoleRoute></ProtectedRoute>}/>
         <Route path="/workshop/bookings/:bookingId" element={<ProtectedRoute><RoleRoute roles={['WORKSHOP_MANAGER', 'SERVICE_ADVISOR', 'ADMIN']}><WorkshopBookingDetail /></RoleRoute></ProtectedRoute>}/>
         <Route path="/workshop/inventory" element={<ProtectedRoute><RoleRoute roles={['WORKSHOP_MANAGER', 'ADMIN']}><Inventory /></RoleRoute></ProtectedRoute>}/>

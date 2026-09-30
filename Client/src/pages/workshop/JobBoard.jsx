@@ -14,6 +14,7 @@ import { useAuth } from '../../contexts/authContext'
 import { listJobs, listWorkshopJobs, createJob } from '../../services/jobApi'
 import { listWorkshopBookings } from '../../services/bookingApi'
 import { listWorkshops, getWorkshopOverview } from '../../services/masterApi'
+import { getOwnWorkshopId } from '../../utils/workshop'
 import { formatDate, formatDateTime } from '../../utils/transitions'
 import {
   ACCENT,
@@ -70,6 +71,7 @@ export default function JobBoardPage() {
   const role = user?.role
   const isMechanic = role === 'MECHANIC'
   const isManager = role === 'WORKSHOP_MANAGER' || role === 'ADMIN'
+  const ownWorkshopId = getOwnWorkshopId(user)
 
   const [workshops, setWorkshops] = useState([])
   const [workshopId, setWorkshopId] = useState('')
@@ -83,7 +85,12 @@ export default function JobBoardPage() {
   const [bookings, setBookings] = useState([])
   const [bookingsLoading, setBookingsLoading] = useState(false)
 
+  // Workshop staff are pinned to the workshop they are posted to, everyone else picks one.
+  const activeWorkshopId = ownWorkshopId || workshopId
+
   useEffect(() => {
+    if (ownWorkshopId) return
+
     let cancelled = false
     listWorkshops({ limit: 100 })
       .then((res) => {
@@ -100,29 +107,29 @@ export default function JobBoardPage() {
       })
       .catch((err) => { if (!cancelled) toast.error(err.message) })
     return () => { cancelled = true }
-  }, [user?.workshopId])
+  }, [ownWorkshopId, user?.workshopId])
 
   useEffect(() => {
-    if (!workshopId) return
+    if (!activeWorkshopId) return
     let cancelled = false
     const fetchJobs = isMechanic
       ? listJobs({ limit: 100 })
-      : listWorkshopJobs(workshopId, { limit: 100 })
+      : listWorkshopJobs(activeWorkshopId, { limit: 100 })
     fetchJobs
       .then((res) => { if (!cancelled) setJobs(res.data?.jobs || []) })
       .catch((err) => { if (!cancelled) toast.error(err.message) })
       .finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
-  }, [workshopId, isMechanic])
+  }, [activeWorkshopId, isMechanic])
 
   useEffect(() => {
-    if (!workshopId || !isManager) return
+    if (!activeWorkshopId || !isManager) return
     let cancelled = false
-    getWorkshopOverview(workshopId)
+    getWorkshopOverview(activeWorkshopId)
       .then((res) => { if (!cancelled) setOverview(res.data) })
       .catch(() => { if (!cancelled) setOverview(null) })
     return () => { cancelled = true }
-  }, [workshopId, isManager])
+  }, [activeWorkshopId, isManager])
 
   const visibleJobs = filter === 'ALL' ? jobs : jobs.filter((j) => j.status === filter)
 
@@ -130,7 +137,7 @@ export default function JobBoardPage() {
     try {
       const res = isMechanic
         ? await listJobs({ limit: 100 })
-        : await listWorkshopJobs(workshopId, { limit: 100 })
+        : await listWorkshopJobs(activeWorkshopId, { limit: 100 })
       setJobs(res.data?.jobs || [])
     } catch (err) {
       toast.error(err.message)
@@ -138,7 +145,7 @@ export default function JobBoardPage() {
   }
 
   const openCreateJob = async () => {
-    if (!workshopId) {
+    if (!activeWorkshopId) {
       toast.error('Select a workshop first')
       return
     }
@@ -147,7 +154,7 @@ export default function JobBoardPage() {
     setBookingsLoading(true)
     setJobModal(true)
     try {
-      const res = await listWorkshopBookings(workshopId, { limit: 100, sortBy: 'createdAt', sortOrder: 'desc' })
+      const res = await listWorkshopBookings(activeWorkshopId, { limit: 100, sortBy: 'createdAt', sortOrder: 'desc' })
       const allBookings = res.data?.bookings || []
       const jobBookingIds = new Set(
         (jobs || [])
@@ -237,7 +244,7 @@ export default function JobBoardPage() {
           </div>
         )}
 
-        {!isMechanic && workshopId === '' && (
+        {!isMechanic && !ownWorkshopId && workshopId === '' && (
           <div className="max-w-sm">
             <SelectInput
               label="Workshop"
@@ -276,7 +283,7 @@ export default function JobBoardPage() {
           ))}
         </div>
 
-        {!workshopId ? (
+        {!activeWorkshopId ? (
           <EmptyState
             icon={Wrench}
             title={isMechanic ? 'No assigned jobs' : 'Select a workshop'}
