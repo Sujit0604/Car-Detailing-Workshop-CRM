@@ -32,6 +32,7 @@ const env = {
   JWT_AUDIENCE: process.env.JWT_AUDIENCE,
   JWT_ISSUER: process.env.JWT_ISSUER,
 
+  CORS_ORIGINS: process.env.CORS_ORIGINS,
   CLIENT_URL: process.env.CLIENT_URL,
   ADMIN_URL: process.env.ADMIN_URL,
 

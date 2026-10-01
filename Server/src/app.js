@@ -32,7 +32,14 @@ const errorHandler = require("./middleware/error.middleware.js");
 
 const app = express();
 
+const corsOrigins = (env.CORS_ORIGINS || "")
+  .split(",")
+  .map((o) => o.trim().replace(/\/$/, ""))
+  .filter(Boolean); // drops empty entries from a trailing comma
+
 app.use(helmet()); // security
+
+app.use(cors({ origin: corsOrigins, credentials: true }));
 
 app.use((req, res, next) => {
   Object.defineProperty(req, 'query', {
@@ -45,14 +52,6 @@ app.use((req, res, next) => {
 });   
 app.use(mongoSanitize());
 app.use(hpp());
-
-app.use(
-    cors({
-        origin: [env.CLIENT_URL, env.ADMIN_URL],
-        credentials: true,
-    })
-    // cors()
-);
 
 // app.use(apiLimiter);
 
