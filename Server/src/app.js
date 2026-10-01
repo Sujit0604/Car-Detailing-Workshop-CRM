@@ -47,11 +47,11 @@ app.use(mongoSanitize());
 app.use(hpp());
 
 app.use(
-    // cors({
-    //     origin: env.CLIENT_URL,
-    //     credentials: true,
-    // })
-    cors()
+    cors({
+        origin: [env.CLIENT_URL, env.ADMIN_URL],
+        credentials: true,
+    })
+    // cors()
 );
 
 // app.use(apiLimiter);
