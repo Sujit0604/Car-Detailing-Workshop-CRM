@@ -32,6 +32,10 @@ const errorHandler = require("./middleware/error.middleware.js");
 
 const app = express();
 
+// Behind a single reverse proxy (Render) that sets X-Forwarded-For. Required so
+// req.ip resolves to the real client IP for rate limiting and req.protocol.
+app.set("trust proxy", 1);
+
 const corsOrigins = (env.CORS_ORIGINS || "")
   .split(",")
   .map((o) => o.trim().replace(/\/$/, ""))
@@ -53,7 +57,7 @@ app.use((req, res, next) => {
 app.use(mongoSanitize());
 app.use(hpp());
 
-// app.use(apiLimiter);
+app.use(apiLimiter);
 
 // Razorpay signs the untouched request payload, so its webhook router must run
 // before express.json() consumes the body.
