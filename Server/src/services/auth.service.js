@@ -24,6 +24,33 @@ const buildUserBrief = (user) => {
 };
 
 
+// Issues an OTP, persists it, and mails it. The code is cleared again when the
+// mail cannot be delivered so the next attempt starts from a fresh code instead
+// of leaving the user holding one that was never sent.
+const issueOtp = async (user, message) => {
+    const verificationCode = await generateOTP();
+    const verificationCodeExpires = new Date(Date.now() + 10 * 60 * 1000);
+
+    user.verificationCode = verificationCode;
+    user.verificationCodeExpires = verificationCodeExpires;
+
+    await user.save();
+
+    const delivered = await sendVerificationCode(user.email, verificationCode);
+
+    if (!delivered) {
+        user.verificationCode = null;
+        user.verificationCodeExpires = null;
+
+        await user.save();
+
+        throw new ApiError(503, "Could not send the verification email. Please try again.");
+    }
+
+    return { message };
+};
+
+
 const registerService = async (name, email, password, gender, phone, role) => {
     const existingUser = await User.findOne({
         $or: [{ email }, { phone }]
@@ -92,21 +119,10 @@ const loginService = async (email, password) => {
     }
 
     if(user.needsVerification && !user.emailVerified) {
-        const verificationCode = await generateOTP();
-        const verificationCodeExpires = new Date(Date.now() + 10 * 60 * 1000);
-
-        user.verificationCode = verificationCode;
-        user.verificationCodeExpires = verificationCodeExpires;  
-
-        await user.save();
-
-        await sendVerificationCode(user.email, verificationCode);
-        
-        const result = {
-            message: 'OTP sent to your email. You should verify email for first time login.'
-        }
-
-        return result;
+        return issueOtp(
+            user,
+            'OTP sent to your email. You should verify email for first time login.'
+        );
     }
 
     if(user.threeDayExpires < new Date() && user.emailVerified) {
@@ -116,21 +132,7 @@ const loginService = async (email, password) => {
             await user.save();
         }
 
-        const verificationCode = await generateOTP();
-        const verificationCodeExpires = new Date(Date.now() + 10 * 60 * 1000);
-
-        user.verificationCode = verificationCode;
-        user.verificationCodeExpires = verificationCodeExpires;  
-
-        await user.save();
-
-        await sendVerificationCode(user.email, verificationCode);
-        
-        const result = {
-            message: "OTP sent to your email for three day's reverify"
-        }
-
-        return result;
+        return issueOtp(user, "OTP sent to your email for three day's reverify");
     }
 
     let refToken;
@@ -176,7 +178,8 @@ const loginService = async (email, password) => {
         message: 'User login successfully'
     }
 
-    await sendWelcomeEmail(user.email, user.name);
+    // Best effort: a failed or slow SMTP host must not delay or fail the login.
+    void sendWelcomeEmail(user.email, user.name);
 
     return res;
 };
@@ -271,7 +274,8 @@ const verifyOtpService = async (email, code) => {
       refreshToken: refToken
     };
 
-    await sendWelcomeEmail(user.email, user.name);
+    // Best effort: the code is already verified, so never fail on email here.
+    void sendWelcomeEmail(user.email, user.name);
 
     return result;
 }
@@ -341,7 +345,7 @@ const logoutService = async (providedToken) => {
 
   try {
     const payload = await verifyRefreshToken(providedToken);
-const user = await User.findById(payload.id).populate("workshopId", "name code");
+    const user = await User.findById(payload.id).populate("workshopId", "name code");
 
     if (user) {
       user.refreshToken = null;

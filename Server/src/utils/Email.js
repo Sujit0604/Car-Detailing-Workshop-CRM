@@ -1,9 +1,64 @@
 const nodemailer = require("nodemailer");
-const transporter = require("../config/EmailConfig.js");
+const { transporter, isSmtpConfigured } = require("../config/EmailConfig.js");
 const env = require("../config/env.js");
+const logger = require("./logger.js");
 
 const APP_NAME = "KROM DETAIL";
 const TAGLINE = "Premium Car Detailing Workshop.";
+
+// Connection-level failures worth one more attempt; auth/address rejections are
+// not, since retrying them just burns the timeouts again.
+const TRANSIENT_CODES = new Set([
+    "ETIMEDOUT",
+    "ECONNRESET",
+    "ECONNECTION",
+    "ESOCKET",
+    "EDNS",
+    "EAI_AGAIN",
+]);
+
+const RETRY_DELAY_MS = 1000;
+
+// Email must never take authentication down with it, so this never throws: it
+// returns the nodemailer info on success and null when delivery failed.
+// `attempts` exists because a caller sitting on the login critical path cannot
+// afford two connection timeouts back to back.
+const sendMail = async (options, attempts = 2) => {
+    if (!isSmtpConfigured()) {
+        logger.warn(
+            `Email to ${options.to} skipped: SMTP is not configured.`
+        );
+        return null;
+    }
+
+    for (let attempt = 1; attempt <= attempts; attempt++) {
+        try {
+            const info = await transporter.sendMail(options);
+
+            logger.info(`Email sent to ${options.to} (${info.messageId}).`);
+
+            const previewUrl = nodemailer.getTestMessageUrl(info);
+            if (previewUrl) {
+                logger.info(`Email preview URL: ${previewUrl}`);
+            }
+
+            return info;
+        } catch (error) {
+            logger.error(
+                `Email to ${options.to} failed (attempt ${attempt}/${attempts}, ` +
+                `${error.code || "UNKNOWN"}): ${error.message}`
+            );
+
+            if (attempt === attempts || !TRANSIENT_CODES.has(error.code)) {
+                return null;
+            }
+
+            await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS));
+        }
+    }
+
+    return null;
+};
 
 const baseHeader = () => `
     <tr>
@@ -142,13 +197,12 @@ const template = ({ title, respondHeader, content }) => `
 `;
 
 const sendVerificationCode = async (email, verificationCode) => {
-    try {
-        const info = await transporter.sendMail({
-            from: `"${APP_NAME}" <${env.SMTP_USER}>`,
-            to: email,
-            subject: `Your ${APP_NAME} Verification Code`,
+    return sendMail({
+        from: `"${APP_NAME}" <${env.SMTP_USER}>`,
+        to: email,
+        subject: `Your ${APP_NAME} Verification Code`,
 
-            text: `
+        text: `
 Hello,
 
 Welcome to ${APP_NAME}!
@@ -167,9 +221,9 @@ ${APP_NAME} Team
 © ${new Date().getFullYear()} ${APP_NAME}. All rights reserved.
             `,
 
-            html: template({
-                title: `Verify Your ${APP_NAME} Account`,
-                respondHeader: "One step away from getting started",
+        html: template({
+            title: `Verify Your ${APP_NAME} Account`,
+            respondHeader: "One step away from getting started",
                 content: `
                         <p style="
                             margin: 0 0 18px 0;
@@ -267,31 +321,19 @@ ${APP_NAME} Team
                             code with anyone.
                         </p>
                 `,
-            }),
-        });
-
-        console.log("Verification email sent:", info.messageId);
-
-        const previewUrl = nodemailer.getTestMessageUrl(info);
-        if (previewUrl) {
-            console.log("Preview URL:", previewUrl);
-        }
-
-        return info;
-    } catch (err) {
-        console.error("Error while sending verification email:", err);
-        throw err;
-    }
+        })
+        // Single attempt: this mail is awaited on the login request, so it must
+        // fail fast and let the caller return a clean 503.
+    }, 1);
 };
 
 const sendWelcomeEmail = async (email, name) => {
-    try {
-        const info = await transporter.sendMail({
-            from: `"${APP_NAME}" <${env.SMTP_USER}>`,
-            to: email,
-            subject: `Welcome to ${APP_NAME}!`,
+    return sendMail({
+        from: `"${APP_NAME}" <${env.SMTP_USER}>`,
+        to: email,
+        subject: `Welcome to ${APP_NAME}!`,
 
-            text: `
+        text: `
 Hello ${name},
 
 Welcome to ${APP_NAME} - Premium Car Detailing Workshop.
@@ -305,9 +347,9 @@ ${APP_NAME} Team
 © ${new Date().getFullYear()} ${APP_NAME}. All rights reserved.
             `,
 
-            html: template({
-                title: `Welcome to ${APP_NAME}!`,
-                respondHeader: "Your account is ready",
+        html: template({
+            title: `Welcome to ${APP_NAME}!`,
+            respondHeader: "Your account is ready",
                 content: `
                         <p style="
                             margin: 0 0 18px 0;
@@ -340,21 +382,8 @@ ${APP_NAME} Team
                             <strong style="color: #334155;">${APP_NAME}</strong>.
                         </p>
                 `,
-            }),
-        });
-
-        console.log("Welcome email sent:", info.messageId);
-
-        const previewUrl = nodemailer.getTestMessageUrl(info);
-        if (previewUrl) {
-            console.log("Preview URL:", previewUrl);
-        }
-
-        return info;
-    } catch (err) {
-        console.error("Error while sending welcome email:", err);
-        throw err;
-    }
+        })
+    });
 };
 
 module.exports = {
