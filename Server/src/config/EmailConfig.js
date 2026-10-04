@@ -26,6 +26,18 @@ const fromHeader = fromName ? `"${fromName}" <${fromAddress}>` : fromAddress;
 const resendReady = Boolean(env.RESEND_API_KEY);
 const smtpReady = Boolean(env.SMTP_USER && env.SMTP_PASS);
 
+// Resend delivers from an address on a domain verified inside the Resend
+// dashboard, so the sender domain is not a cosmetic choice and cannot be worked
+// around: the one exception is the shared onboarding sender, which Resend
+// restricts to the account's own inbox. These constants exist to turn that
+// constraint into a log line the reader can act on.
+const RESEND_TEST_FROM = "onboarding@resend.dev";
+const RESEND_DOMAIN_HINT =
+    `Either verify a domain at resend.com/domains and set MAIL_FROM to an address on ` +
+    `it, or set MAIL_FROM=${RESEND_TEST_FROM} to test delivery to the Resend ` +
+    "account's own inbox only.";
+const PLACEHOLDER_DOMAINS = ["example.com", "example.org", "example.net"];
+
 const resolveProvider = () => {
     const requested = String(env.MAIL_PROVIDER || "auto").trim().toLowerCase();
 
@@ -146,17 +158,29 @@ const sendViaSmtp = async (mail) => {
 };
 
 const sendViaResend = async (mail) => {
-    const payload = await postJson(
-        "https://api.resend.com/emails",
-        { Authorization: `Bearer ${env.RESEND_API_KEY}` },
-        {
-            from: fromHeader,
-            to: [mail.to],
-            subject: mail.subject,
-            text: mail.text,
-            html: mail.html,
+    let payload;
+
+    try {
+        payload = await postJson(
+            "https://api.resend.com/emails",
+            { Authorization: `Bearer ${env.RESEND_API_KEY}` },
+            {
+                from: fromHeader,
+                to: [mail.to],
+                subject: mail.subject,
+                text: mail.text,
+                html: mail.html,
+            }
+        );
+    } catch (error) {
+        // Resend reports both a missing domain and an unverified one as a bare
+        // 403, so the API text alone leaves the reader guessing which it is.
+        if (error.status === 403) {
+            error.message = `${error.message}. ${RESEND_DOMAIN_HINT}`;
         }
-    );
+
+        throw error;
+    }
 
     return { messageId: payload.id || "unknown" };
 };
@@ -227,9 +251,9 @@ const deliver = async (mail, attempts = 2) => {
 };
 
 // Non-fatal startup probe so a misconfigured transport shows up in the logs at
-// boot instead of on the first user login. SMTP gets a real handshake; the HTTP
-// providers are only checked for a usable key and sender, because their auth
-// probes need broader API scopes than the sending key has.
+// boot instead of on the first user login. SMTP gets a real handshake; Resend is
+// only checked for a usable sender, because its auth probes need broader API
+// scopes than a sending key has.
 const verifyMailDelivery = async () => {
     if (!isMailConfigured()) {
         logger.warn(
@@ -239,17 +263,24 @@ const verifyMailDelivery = async () => {
     }
 
     if (!fromAddress) {
-        logger.warn(
-            "MAIL_FROM is not set, so mail would have no sender address. " +
-            "Email delivery is disabled."
-        );
+        logger.warn("MAIL_FROM is not set. Email delivery is disabled.");
         return false;
     }
 
     if (provider === PROVIDER.RESEND) {
+        // example.com is the documentation placeholder, not a deliverable
+        // sender, and Resend has no way to verify it.
+        if (PLACEHOLDER_DOMAINS.some((domain) => fromAddress.endsWith(`@${domain}`))) {
+            logger.error(
+                `MAIL_FROM is still the placeholder ${fromAddress}, which Resend cannot ` +
+                `verify. ${RESEND_DOMAIN_HINT}`
+            );
+            return false;
+        }
+
         logger.info(
             `Mail transport configured (Resend over HTTPS, sender ${fromHeader}). ` +
-            "The key is only exercised on the first send, so a bad one shows up there."
+            "The key and the domain are only exercised on the first send."
         );
         return true;
     }
