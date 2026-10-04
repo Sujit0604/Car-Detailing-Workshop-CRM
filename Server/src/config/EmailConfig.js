@@ -17,11 +17,12 @@ const transporter = nodemailer.createTransport({
         user: env.SMTP_USER,
         pass: env.SMTP_PASS,
     },
+    family: 4,
     pool: true,
     maxConnections: 3,
     maxMessages: 100,
-    connectionTimeout: 10000,
-    greetingTimeout: 10000,
+    connectionTimeout: 15000,
+    greetingTimeout: 15000,
     socketTimeout: 15000,
 });
 
