@@ -147,7 +147,7 @@ what a status change means, and what a document costs lives in `src/services`.
 
 **Server** — Node.js 18+ (developed on v24), Express 5, Mongoose 9, MongoDB,
 Zod 4, JWT (access + refresh, separate secrets), bcryptjs, Multer 2 +
-Cloudinary, Nodemailer (SMTP), Razorpay, Helmet, CORS, compression, cookie-parser,
+Cloudinary, Nodemailer (SMTP) or the Resend HTTPS API, Razorpay, Helmet, CORS, compression, cookie-parser,
 `express-mongo-sanitize`, HPP, `express-rate-limit`, Morgan, Winston.
 
 **Client / Admin** — React 19, Vite 8 (with the React Compiler via Babel),
@@ -672,7 +672,10 @@ public.
 | `OTP_LENGTH` / `OTP_EXPIRY_MINUTES` | no | `6` / `10` |
 | `CLIENT_URL` | no | `http://localhost:5173`, used for CORS and email links |
 | `CLOUDINARY_CLOUD_NAME` / `_API_KEY` / `_API_SECRET` | no | Empty falls back to local `Server/uploads` |
-| `SMTP_USER` / `SMTP_PASS` | no | Empty disables OTP emails — you will not be able to complete verification for new accounts |
+| `MAIL_PROVIDER` | no | `auto` — picks `resend` when `RESEND_API_KEY` is set, else `smtp` |
+| `MAIL_FROM` / `MAIL_FROM_NAME` | no | Sender address for OTP emails; must be a verified address on Resend |
+| `RESEND_API_KEY` | no | Sends over HTTPS, so it works on Render's free tier |
+| `SMTP_USER` / `SMTP_PASS` | no | Empty disables OTP emails — you will not be able to complete verification for new accounts. SMTP needs outbound port 465/587, which Render's free web services block, so use `MAIL_PROVIDER=resend` with `RESEND_API_KEY` there |
 | `RATE_LIMIT_WINDOW_MS` / `RATE_LIMIT_MAX_REQUESTS` | no | `900000` / `100` (limiter is wired but currently disabled in `app.js`) |
 | `RAZORPAY_KEY_ID` / `_KEY_SECRET` | no | Empty disables online checkout |
 | `RAZORPAY_WEBHOOK_SECRET` | no | Empty makes the webhook return `503` |

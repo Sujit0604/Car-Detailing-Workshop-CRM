@@ -2,14 +2,44 @@ const nodemailer = require("nodemailer");
 const env = require("./env.js");
 const logger = require("../utils/logger.js");
 
+// Mail leaves through one of two transports, and the choice is not a detail:
+// SMTP needs a raw TCP connection to port 25/465/587, which many hosts refuse.
+// Render's free web services drop all three, so an SMTP-only setup fails there
+// with a bare ETIMEDOUT before any SMTP dialogue even starts. Resend rides on
+// 443 and works everywhere, so it is the production path; SMTP stays because it
+// is the only one that needs no third-party account locally.
+// MAIL_PROVIDER pins one; "auto" prefers Resend when its key is set.
+const PROVIDER = {
+    RESEND: "resend",
+    SMTP: "smtp",
+};
+
 // Port 465 uses implicit TLS, 587 upgrades via STARTTLS.
 const port = Number(env.SMTP_PORT) || 587;
 const secure = env.SMTP_SECURE ? env.SMTP_SECURE === "true" : port === 465;
+const smtpHost = env.SMTP_HOST || "smtp.gmail.com";
 
-// Short timeouts on purpose: the default 120s connectionTimeout lets a dead SMTP
-// host stall the request until the upstream proxy gives up first.
-const transporter = nodemailer.createTransport({
-    host: env.SMTP_HOST || "smtp.gmail.com",
+const fromAddress = env.MAIL_FROM || env.SMTP_USER || "";
+const fromName = env.MAIL_FROM_NAME || "";
+const fromHeader = fromName ? `"${fromName}" <${fromAddress}>` : fromAddress;
+
+const resendReady = Boolean(env.RESEND_API_KEY);
+const smtpReady = Boolean(env.SMTP_USER && env.SMTP_PASS);
+
+const resolveProvider = () => {
+    const requested = String(env.MAIL_PROVIDER || "auto").trim().toLowerCase();
+
+    if (requested === PROVIDER.SMTP) return PROVIDER.SMTP;
+
+    return resendReady ? PROVIDER.RESEND : PROVIDER.SMTP;
+};
+
+const provider = resolveProvider();
+
+// Short timeouts on purpose: the nodemailer default of 120s connectionTimeout
+// lets a dead host stall the request until the upstream proxy gives up first.
+const smtpTransport = nodemailer.createTransport({
+    host: smtpHost,
     port,
     secure,
     requireTLS: port === 587,
@@ -17,7 +47,6 @@ const transporter = nodemailer.createTransport({
         user: env.SMTP_USER,
         pass: env.SMTP_PASS,
     },
-    family: 4,
     pool: true,
     maxConnections: 3,
     maxMessages: 100,
@@ -26,21 +55,208 @@ const transporter = nodemailer.createTransport({
     socketTimeout: 15000,
 });
 
-const isSmtpConfigured = () => Boolean(env.SMTP_USER && env.SMTP_PASS);
+const HTTP_TIMEOUT_MS = 10000;
+const RETRY_DELAY_MS = 1000;
 
-// Non-fatal startup probe so SMTP misconfiguration shows up in the logs at boot
-// instead of on the first user login.
-const verifySmtpConnection = async () => {
-    if (!isSmtpConfigured()) {
+// After one unreachable transport there is no point paying another timeout per
+// login for the same blocked route, so the provider is parked for a cooldown and
+// every later send fails fast with a single warning instead.
+const EGRESS_COOLDOWN_MS = 10 * 60 * 1000;
+let egressBlockedUntil = 0;
+
+const TRANSIENT_CODES = new Set([
+    "ETIMEDOUT",
+    "ECONNRESET",
+    "ECONNREFUSED",
+    "ECONNECTION",
+    "EHOSTUNREACH",
+    "ENETUNREACH",
+    "ESOCKET",
+    "EPIPE",
+    "EDNS",
+    "EAI_AGAIN",
+]);
+
+// No HTTP response at all means the route itself is gone (blocked port, DNS,
+// firewall). An HTTP error status is the provider talking back, so it must not
+// park the transport.
+const isNetworkError = (error) =>
+    TRANSIENT_CODES.has(error.code) || Boolean(error.code === undefined && error.cause);
+
+const isRetryable = (error) =>
+    typeof error.retryable === "boolean"
+        ? error.retryable
+        : TRANSIENT_CODES.has(error.code);
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const httpError = (message, { code, retryable, status }) => {
+    const error = new Error(message);
+    error.code = code;
+    error.retryable = retryable;
+    if (status) error.status = status;
+    return error;
+};
+
+const postJson = async (url, headers, body) => {
+    let response;
+
+    try {
+        response = await fetch(url, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", ...headers },
+            body: JSON.stringify(body),
+            signal: AbortSignal.timeout(HTTP_TIMEOUT_MS),
+        });
+    } catch (error) {
+        throw httpError(
+            `${url} unreachable: ${error.message}`,
+            { code: error.code || "EHOSTUNREACH", retryable: true }
+        );
+    }
+
+    const payload = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+        throw httpError(
+            payload.message || payload.error || `HTTP ${response.status} from ${url}`,
+            {
+                code: "EHTTPSEND",
+                // 4xx is a bad key or a bad sender address, which retrying cannot
+                // fix; 5xx is the provider having a bad minute.
+                retryable: response.status >= 500,
+                status: response.status,
+            }
+        );
+    }
+
+    return payload;
+};
+
+const sendViaSmtp = async (mail) => {
+    const info = await smtpTransport.sendMail({
+        from: fromHeader,
+        to: mail.to,
+        subject: mail.subject,
+        text: mail.text,
+        html: mail.html,
+    });
+
+    return { messageId: info.messageId };
+};
+
+const sendViaResend = async (mail) => {
+    const payload = await postJson(
+        "https://api.resend.com/emails",
+        { Authorization: `Bearer ${env.RESEND_API_KEY}` },
+        {
+            from: fromHeader,
+            to: [mail.to],
+            subject: mail.subject,
+            text: mail.text,
+            html: mail.html,
+        }
+    );
+
+    return { messageId: payload.id || "unknown" };
+};
+
+const senders = {
+    [PROVIDER.RESEND]: sendViaResend,
+    [PROVIDER.SMTP]: sendViaSmtp,
+};
+
+const isMailConfigured = () =>
+    provider === PROVIDER.SMTP ? smtpReady : resendReady;
+
+// Email must never take authentication down with it, so this never throws: it
+// returns the provider's info on success and null when delivery failed.
+// `attempts` exists because a caller sitting on the login critical path cannot
+// afford two connection timeouts back to back.
+const deliver = async (mail, attempts = 2) => {
+    if (!isMailConfigured()) {
         logger.warn(
-            "SMTP_USER/SMTP_PASS are not set. Email delivery is disabled."
+            `Email to ${mail.to} skipped: ${provider} is not configured. ` +
+            "Set RESEND_API_KEY for resend, or SMTP_USER/SMTP_PASS for smtp."
+        );
+        return null;
+    }
+
+    if (Date.now() < egressBlockedUntil) {
+        logger.warn(
+            `Email to ${mail.to} skipped: no route to ${provider}. ` +
+            "Free Render instances block outbound SMTP, so use MAIL_PROVIDER=resend " +
+            "with RESEND_API_KEY there."
+        );
+        return null;
+    }
+
+    const send = senders[provider];
+
+    for (let attempt = 1; attempt <= attempts; attempt++) {
+        try {
+            const info = await send(mail);
+
+            logger.info(`Email sent to ${mail.to} via ${provider} (${info.messageId}).`);
+
+            return info;
+        } catch (error) {
+            logger.error(
+                `Email to ${mail.to} failed (attempt ${attempt}/${attempts}, ` +
+                `${error.code || "UNKNOWN"}): ${error.message}`
+            );
+
+            if (isNetworkError(error)) {
+                egressBlockedUntil = Date.now() + EGRESS_COOLDOWN_MS;
+
+                logger.error(
+                    `No route to ${provider}, pausing mail for ${EGRESS_COOLDOWN_MS / 60000} minutes. ` +
+                    "A blocked egress port looks exactly like this."
+                );
+            }
+
+            if (attempt === attempts || !isRetryable(error)) {
+                return null;
+            }
+
+            await sleep(RETRY_DELAY_MS);
+        }
+    }
+
+    return null;
+};
+
+// Non-fatal startup probe so a misconfigured transport shows up in the logs at
+// boot instead of on the first user login. SMTP gets a real handshake; the HTTP
+// providers are only checked for a usable key and sender, because their auth
+// probes need broader API scopes than the sending key has.
+const verifyMailDelivery = async () => {
+    if (!isMailConfigured()) {
+        logger.warn(
+            `${provider} is not configured. Email delivery is disabled.`
         );
         return false;
     }
 
+    if (!fromAddress) {
+        logger.warn(
+            "MAIL_FROM is not set, so mail would have no sender address. " +
+            "Email delivery is disabled."
+        );
+        return false;
+    }
+
+    if (provider === PROVIDER.RESEND) {
+        logger.info(
+            `Mail transport configured (Resend over HTTPS, sender ${fromHeader}). ` +
+            "The key is only exercised on the first send, so a bad one shows up there."
+        );
+        return true;
+    }
+
     try {
-        await transporter.verify();
-        logger.info(`SMTP connection verified (${transporter.options.host}:${port}).`);
+        await smtpTransport.verify();
+        logger.info(`SMTP connection verified (${smtpHost}:${port}).`);
         return true;
     } catch (error) {
         logger.error(
@@ -52,7 +268,9 @@ const verifySmtpConnection = async () => {
 };
 
 module.exports = {
-    transporter,
-    isSmtpConfigured,
-    verifySmtpConnection,
+    deliver,
+    isMailConfigured,
+    verifyMailDelivery,
+    PROVIDER,
+    provider,
 };

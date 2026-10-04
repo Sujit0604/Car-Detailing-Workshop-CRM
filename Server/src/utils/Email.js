@@ -1,64 +1,12 @@
-const nodemailer = require("nodemailer");
-const { transporter, isSmtpConfigured } = require("../config/EmailConfig.js");
+const { deliver } = require("../config/EmailConfig.js");
 const env = require("../config/env.js");
-const logger = require("./logger.js");
 
 const APP_NAME = "KROM DETAIL";
 const TAGLINE = "Premium Car Detailing Workshop.";
 
-// Connection-level failures worth one more attempt; auth/address rejections are
-// not, since retrying them just burns the timeouts again.
-const TRANSIENT_CODES = new Set([
-    "ETIMEDOUT",
-    "ECONNRESET",
-    "ECONNECTION",
-    "ESOCKET",
-    "EDNS",
-    "EAI_AGAIN",
-]);
-
-const RETRY_DELAY_MS = 1000;
-
-// Email must never take authentication down with it, so this never throws: it
-// returns the nodemailer info on success and null when delivery failed.
-// `attempts` exists because a caller sitting on the login critical path cannot
-// afford two connection timeouts back to back.
-const sendMail = async (options, attempts = 2) => {
-    if (!isSmtpConfigured()) {
-        logger.warn(
-            `Email to ${options.to} skipped: SMTP is not configured.`
-        );
-        return null;
-    }
-
-    for (let attempt = 1; attempt <= attempts; attempt++) {
-        try {
-            const info = await transporter.sendMail(options);
-
-            logger.info(`Email sent to ${options.to} (${info.messageId}).`);
-
-            const previewUrl = nodemailer.getTestMessageUrl(info);
-            if (previewUrl) {
-                logger.info(`Email preview URL: ${previewUrl}`);
-            }
-
-            return info;
-        } catch (error) {
-            logger.error(
-                `Email to ${options.to} failed (attempt ${attempt}/${attempts}, ` +
-                `${error.code || "UNKNOWN"}): ${error.message}`
-            );
-
-            if (attempt === attempts || !TRANSIENT_CODES.has(error.code)) {
-                return null;
-            }
-
-            await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS));
-        }
-    }
-
-    return null;
-};
+// Retry policy, transport and sender address all live in EmailConfig, so this
+// module only builds the message.
+const sendMail = (mail, attempts) => deliver(mail, attempts);
 
 const baseHeader = () => `
     <tr>
@@ -198,7 +146,6 @@ const template = ({ title, respondHeader, content }) => `
 
 const sendVerificationCode = async (email, verificationCode) => {
     return sendMail({
-        from: `"${APP_NAME}" <${env.SMTP_USER}>`,
         to: email,
         subject: `Your ${APP_NAME} Verification Code`,
 
@@ -329,7 +276,6 @@ ${APP_NAME} Team
 
 const sendWelcomeEmail = async (email, name) => {
     return sendMail({
-        from: `"${APP_NAME}" <${env.SMTP_USER}>`,
         to: email,
         subject: `Welcome to ${APP_NAME}!`,
 

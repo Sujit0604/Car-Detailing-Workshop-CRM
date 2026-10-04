@@ -36,6 +36,14 @@ const env = {
   CLIENT_URL: process.env.CLIENT_URL,
   ADMIN_URL: process.env.ADMIN_URL,
 
+  // Mail transport: "auto" (default) prefers Resend when its key is set and
+  // falls back to SMTP, which is the only option that works locally.
+  MAIL_PROVIDER: process.env.MAIL_PROVIDER,
+  MAIL_FROM: process.env.MAIL_FROM,
+  MAIL_FROM_NAME: process.env.MAIL_FROM_NAME,
+
+  RESEND_API_KEY: process.env.RESEND_API_KEY,
+
   SMTP_HOST: process.env.SMTP_HOST,
   SMTP_PORT: process.env.SMTP_PORT,
   SMTP_SECURE: process.env.SMTP_SECURE,
